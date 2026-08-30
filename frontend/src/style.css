@@ -1,0 +1,170 @@
+/* ============================================================
+   凛冬RinEyce · 简约个人站
+   全局基础样式：变量 / 重置 / 共享工具类
+   ============================================================ */
+
+:root {
+  /* 浅色主题 */
+  --bg: #fafafa;
+  --bg-alt: #f0f2f5;
+  --card: #ffffff;
+  --text: #1a1d23;
+  --text-dim: #6b7280;
+  --border: #e5e7eb;
+  --accent: #2563eb;        /* 凛冬之蓝 */
+  --accent-soft: rgba(37, 99, 235, 0.08);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.04);
+  --radius: 14px;
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, ui-monospace, monospace;
+}
+
+html[data-theme="dark"] {
+  --bg: #0e1116;
+  --bg-alt: #141922;
+  --card: #171c26;
+  --text: #e5e9f0;
+  --text-dim: #8b93a3;
+  --border: #232a36;
+  --accent: #60a5fa;
+  --accent-soft: rgba(96, 165, 250, 0.1);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.7;
+  transition: background 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent); color: #fff; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.accent { color: var(--accent); }
+
+/* ---------------- 共享按钮 ---------------- */
+
+.btn {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.btn:hover { text-decoration: none; transform: translateY(-2px); }
+
+.btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 14px var(--accent-soft); }
+.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 6px 20px var(--accent-soft); }
+
+.btn-ghost { border: 1px solid var(--border); color: var(--text); background: transparent; }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---------------- 共享区块 ---------------- */
+
+.section { padding: 96px 24px; }
+.section-alt { background: var(--bg-alt); }
+.section-inner { max-width: 960px; margin: 0 auto; }
+
+.section-title {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 40px;
+  letter-spacing: 0.5px;
+}
+.section-title .accent { margin-right: 6px; }
+
+/* ---------------- 滚动出现动画（配合 v-reveal 指令） ---------------- */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.visible { opacity: 1; transform: none; }
+
+/* ---------------- 文章正文排版（wangEditor 输出 HTML） ---------------- */
+
+.post-content {
+  font-size: 16.5px;
+  line-height: 1.9;
+  color: var(--text);
+  word-break: break-word;
+}
+.post-content h1, .post-content h2, .post-content h3, .post-content h4 {
+  margin: 1.6em 0 0.7em;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.post-content h1 { font-size: 1.6em; }
+.post-content h2 { font-size: 1.4em; }
+.post-content h3 { font-size: 1.2em; }
+.post-content p { margin: 0.9em 0; }
+.post-content a { color: var(--accent); text-decoration: underline; }
+.post-content img {
+  max-width: 100%;
+  border-radius: 10px;
+  margin: 1em 0;
+  display: block;
+  border: 1px solid var(--border);
+}
+.post-content blockquote {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  margin: 1.2em 0;
+  padding: 0.8em 1.2em;
+  border-radius: 0 10px 10px 0;
+  color: var(--text-dim);
+}
+.post-content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+}
+.post-content pre {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  margin: 1.2em 0;
+}
+.post-content pre code {
+  background: none;
+  color: var(--text);
+  padding: 0;
+}
+.post-content ul, .post-content ol { margin: 0.9em 0; padding-left: 1.6em; }
+.post-content li { margin: 0.35em 0; }
+.post-content table {
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  width: 100%;
+}
+.post-content th, .post-content td {
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  text-align: left;
+}
+.post-content th { background: var(--bg-alt); }
+.post-content hr { border: none; border-top: 1px dashed var(--border); margin: 2em 0; }
+
+/* ---------------- 响应式基础 ---------------- */
+
+@media (max-width: 760px) {
+  .section { padding: 72px 20px; }
+}

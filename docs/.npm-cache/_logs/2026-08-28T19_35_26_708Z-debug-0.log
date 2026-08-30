@@ -1,0 +1,179 @@
+0 verbose cli E:\node\node.exe E:\node\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.9.2
+2 info using node@v22.17.0
+3 silly config load:file:E:\node\node_modules\npm\npmrc
+4 silly config load:file:D:\myblog\docs\.npmrc
+5 silly config load:file:C:\Users\zooto\.npmrc
+6 silly config load:file:C:\Users\zooto\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm install
+8 verbose argv "install" "--cache" ".npm-cache" "--no-audit" "--no-fund"
+9 verbose logfile logs-max:10 dir:D:\myblog\docs\.npm-cache\_logs\2026-08-28T19_35_26_708Z-
+10 verbose logfile D:\myblog\docs\.npm-cache\_logs\2026-08-28T19_35_26_708Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4345298944 maxSize:1086324736 maxEntrySize:543162368
+13 silly idealTree buildDeps
+14 silly reify moves {}
+15 verbose reify failed optional dependency D:\myblog\docs\node_modules\fsevents
+16 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\fsevents' ]
+17 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-win32-ia32-msvc
+18 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-win32-ia32-msvc' ]
+19 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-win32-arm64-msvc
+20 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-win32-arm64-msvc' ]
+21 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-openharmony-arm64
+22 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-openharmony-arm64' ]
+23 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-openbsd-x64
+24 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-openbsd-x64' ]
+25 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-x64-musl
+26 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-x64-musl' ]
+27 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-x64-gnu
+28 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-x64-gnu' ]
+29 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-s390x-gnu
+30 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-s390x-gnu' ]
+31 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-riscv64-musl
+32 silly reify mark deleted [
+32 silly reify   'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-riscv64-musl'
+32 silly reify ]
+33 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-riscv64-gnu
+34 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-riscv64-gnu' ]
+35 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-ppc64-musl
+36 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-ppc64-musl' ]
+37 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-ppc64-gnu
+38 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-ppc64-gnu' ]
+39 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-loong64-musl
+40 silly reify mark deleted [
+40 silly reify   'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-loong64-musl'
+40 silly reify ]
+41 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-loong64-gnu
+42 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-loong64-gnu' ]
+43 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-arm64-musl
+44 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-arm64-musl' ]
+45 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-arm64-gnu
+46 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-arm64-gnu' ]
+47 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-arm-musleabihf
+48 silly reify mark deleted [
+48 silly reify   'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-arm-musleabihf'
+48 silly reify ]
+49 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-linux-arm-gnueabihf
+50 silly reify mark deleted [
+50 silly reify   'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-linux-arm-gnueabihf'
+50 silly reify ]
+51 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-freebsd-x64
+52 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-freebsd-x64' ]
+53 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-freebsd-arm64
+54 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-freebsd-arm64' ]
+55 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-darwin-x64
+56 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-darwin-x64' ]
+57 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-darwin-arm64
+58 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-darwin-arm64' ]
+59 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-android-arm64
+60 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-android-arm64' ]
+61 verbose reify failed optional dependency D:\myblog\docs\node_modules\@rollup\rollup-android-arm-eabi
+62 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@rollup\\rollup-android-arm-eabi' ]
+63 verbose reify failed optional dependency D:\myblog\docs\node_modules\@napi-rs\lzma-linux-x64-gnu
+64 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@napi-rs\\lzma-linux-x64-gnu' ]
+65 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\win32-ia32
+66 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\win32-ia32' ]
+67 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\win32-arm64
+68 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\win32-arm64' ]
+69 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\sunos-x64
+70 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\sunos-x64' ]
+71 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\openharmony-arm64
+72 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\openharmony-arm64' ]
+73 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\openbsd-x64
+74 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\openbsd-x64' ]
+75 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\openbsd-arm64
+76 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\openbsd-arm64' ]
+77 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\netbsd-x64
+78 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\netbsd-x64' ]
+79 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\netbsd-arm64
+80 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\netbsd-arm64' ]
+81 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-x64
+82 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-x64' ]
+83 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-s390x
+84 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-s390x' ]
+85 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-riscv64
+86 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-riscv64' ]
+87 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-ppc64
+88 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-ppc64' ]
+89 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-mips64el
+90 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-mips64el' ]
+91 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-loong64
+92 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-loong64' ]
+93 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-ia32
+94 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-ia32' ]
+95 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-arm64
+96 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-arm64' ]
+97 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\linux-arm
+98 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\linux-arm' ]
+99 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\freebsd-x64
+100 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\freebsd-x64' ]
+101 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\freebsd-arm64
+102 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\freebsd-arm64' ]
+103 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\darwin-x64
+104 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\darwin-x64' ]
+105 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\darwin-arm64
+106 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\darwin-arm64' ]
+107 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\android-x64
+108 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\android-x64' ]
+109 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\android-arm64
+110 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\android-arm64' ]
+111 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\android-arm
+112 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\android-arm' ]
+113 verbose reify failed optional dependency D:\myblog\docs\node_modules\@esbuild\aix-ppc64
+114 silly reify mark deleted [ 'D:\\myblog\\docs\\node_modules\\@esbuild\\aix-ppc64' ]
+115 silly ADD
+116 silly ADD
+117 silly ADD
+118 silly ADD
+119 silly ADD
+120 silly ADD
+121 silly ADD
+122 silly ADD
+123 silly ADD
+124 silly ADD
+125 silly ADD
+126 silly ADD
+127 silly ADD
+128 silly ADD
+129 silly ADD
+130 silly ADD
+131 silly ADD
+132 silly ADD
+133 silly ADD
+134 silly ADD
+135 silly ADD
+136 silly ADD
+137 silly ADD
+138 silly ADD
+139 silly ADD
+140 silly ADD
+141 silly ADD
+142 silly ADD
+143 silly ADD
+144 silly ADD
+145 silly ADD
+146 silly ADD
+147 silly ADD
+148 silly ADD
+149 silly ADD
+150 silly ADD
+151 silly ADD
+152 silly ADD
+153 silly ADD
+154 silly ADD
+155 silly ADD
+156 silly ADD
+157 silly ADD
+158 silly ADD
+159 silly ADD
+160 silly ADD
+161 silly ADD
+162 silly ADD
+163 silly ADD
+164 silly ADD
+165 verbose cwd D:\myblog\docs
+166 verbose os Windows_NT 10.0.26200
+167 verbose node v22.17.0
+168 verbose npm  v10.9.2
+169 verbose exit 0
+170 info ok

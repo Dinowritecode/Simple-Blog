@@ -1,0 +1,7 @@
+./auth.go
+./db.go
+./main.go
+./models.go
+./posts.go
+./static.go
+./upload.go
