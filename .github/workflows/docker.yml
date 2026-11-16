@@ -9,41 +9,48 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    # secrets 不能直接写在 step 的 if 里（GitHub 只允许 github/needs/strategy/matrix/job/runner/env/vars/steps/inputs），
-    # 所以先在这里落成普通环境变量，下面用 env.XXX 判断和取值。
+    # 固定版本而不是 ubuntu-latest：避免 2026-10 之后 latest 换到 26.04 带来意外
+    runs-on: ubuntu-24.04
+    # secrets 不能写在 step 的 if 里（GitHub 只允许 github/needs/strategy/matrix/job/runner/env/vars/steps/inputs），
+    # 所以先落成普通环境变量，下面用 env.XXX 判断。
     env:
       DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       ALI_REG: ${{ secrets.ALIYUN_REGISTRY }}
       ALI_NS: ${{ secrets.ALIYUN_NAMESPACE }}
     steps:
       - name: 取出源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      # ---------- 先算出要推到哪些仓库 ----------
-      # 只把「配置了 secrets 的仓库」列进来：没配 Docker Hub 就只推阿里云，反之亦然。
-      - name: 计算镜像仓库
-        id: images
+      # ---------- 判断这次是「只构建」还是「构建+推送」 ----------
+      # 没配镜像仓库 secrets 时：只构建 + 冒烟测试，不推送 —— CI 照样是绿的。
+      # 以后想推仓库，补上 secrets 即可，这个文件不用改。
+      - name: 检查镜像仓库配置
+        id: cfg
         run: |
           set -e
           IMAGES=""
+          PUSH="false"
           if [ -n "$DH_USER" ]; then
             IMAGES="${DH_USER}/simple-blog"
+            PUSH="true"
           fi
           if [ -n "$ALI_REG" ] && [ -n "$ALI_NS" ]; then
             IMAGES="${IMAGES:+$IMAGES
           }${ALI_REG}/${ALI_NS}/simple-blog"
+            PUSH="true"
           fi
           if [ -z "$IMAGES" ]; then
-            echo "::error::没有配置任何镜像仓库 —— 到 Settings → Secrets and variables → Actions 添加 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN（或阿里云那三个）"
-            exit 1
+            IMAGES="local/simple-blog"
+            echo "::notice::没有配置镜像仓库 secrets —— 本次只构建并做冒烟测试，不推送"
+          else
+            echo "将会推送到："
+            echo "$IMAGES"
           fi
-          echo "将会推送："
-          echo "$IMAGES"
           {
-            echo "list<<IMAGES_EOF"
+            echo "images<<IMAGES_EOF"
             echo "$IMAGES"
             echo "IMAGES_EOF"
+            echo "push=$PUSH"
           } >> "$GITHUB_OUTPUT"
 
       - name: 准备 Buildx
@@ -73,29 +80,141 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.images.outputs.list }}
+          images: ${{ steps.cfg.outputs.images }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short,prefix=sha-
             type=ref,event=tag
 
-      # ---------- 构建并推送 ----------
-      - name: 构建并推送镜像
+      # ---------- 构建（先 load 到本地，冒烟测试要用它） ----------
+      - name: 构建镜像
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: true
-          # 服务器是 x86 云主机；要跑 ARM 就加上 linux/arm64
+          # 注意：buildx 不允许 push 和 load 同时为 true，
+          # 所以这里只构建并加载到本地，推送交给下一步的 docker push
+          push: false
+          load: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: 输出摘要
+      # ---------- 冒烟测试：真的把容器跑起来 ----------
+      # 验证的是「镜像能构建」之外的三件事：
+      #   1. 进程能启动（不因为缺 tzdata / 权限 / 目录不存在而崩）
+      #   2. 能连上 PostgreSQL 并自动建表（迁移没问题）
+      #   3. 前端产物确实在镜像里（/ 返回 index.html），健康检查能变 healthy
+      - name: 冒烟测试（起容器 + 连数据库 + 打接口）
+        env:
+          IMG: ${{ steps.meta.outputs.tags }}
         run: |
-          echo "### 镜像已推送 🎉" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          set -uo pipefail
+          IMG="$(printf '%s\n' "$IMG" | head -1)"
+          echo "被测镜像：$IMG"
+
+          cleanup() {
+            docker rm -f ci-app ci-pg >/dev/null 2>&1 || true
+            docker network rm ci-net >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create ci-net >/dev/null
+
+          echo "▸ 起一个临时 PostgreSQL"
+          docker run -d --name ci-pg --network ci-net \
+            -e POSTGRES_DB=blog -e POSTGRES_USER=blog -e POSTGRES_PASSWORD=citest \
+            postgres:16-alpine >/dev/null
+
+          for i in $(seq 1 60); do
+            docker exec ci-pg pg_isready -U blog -d blog >/dev/null 2>&1 && break
+            [ "$i" = 60 ] && { echo "::error::PostgreSQL 60 秒内没就绪"; docker logs ci-pg; exit 1; }
+            sleep 1
+          done
+          echo "  PostgreSQL 就绪"
+
+          echo "▸ 起博客容器"
+          docker run -d --name ci-app --network ci-net -p 18080:8080 \
+            -e PORT=8080 \
+            -e STATIC_DIR=/app/dist \
+            -e UPLOAD_DIR=/app/uploads \
+            -e POST_CONTENT_DIR=/app/data/posts \
+            -e DB_HOST=ci-pg -e DB_PORT=5432 -e DB_USER=blog -e DB_PASSWORD=citest -e DB_NAME=blog \
+            -e ADMIN_USER=admin -e ADMIN_PASSWORD=ciadminpass \
+            -e TZ=Asia/Shanghai \
+            "$IMG" >/dev/null
+
+          echo "▸ 等 /api/stats 返回 200"
+          for i in $(seq 1 90); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/stats || true)"
+            [ "$code" = "200" ] && break
+            [ "$i" = 90 ] && {
+              echo "::error::90 秒内接口没起来（最后状态码：$code）"
+              docker logs --tail 60 ci-app
+              exit 1
+            }
+            sleep 1
+          done
+          echo "  /api/stats -> $code"
+
+          echo "▸ 断言：接口返回全站统计"
+          stats="$(curl -s http://127.0.0.1:18080/api/stats)"
+          echo "$stats"
+          echo "$stats" | grep -q '"posts"' || { echo "::error::/api/stats 返回内容不对"; exit 1; }
+
+          echo "▸ 断言：首页返回前端 index.html"
+          html="$(curl -s http://127.0.0.1:18080/)"
+          echo "$html" | head -c 300; echo
+          echo "$html" | grep -q 'id="app"' || { echo "::error::首页没有返回 SPA 的 index.html"; exit 1; }
+
+          echo "▸ 断言：容器健康状态为 healthy"
+          for i in $(seq 1 60); do
+            st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' ci-app)"
+            [ "$st" = "healthy" ] && break
+            [ "$i" = 60 ] && { echo "::error::容器健康检查一直是 $st"; docker logs --tail 60 ci-app; exit 1; }
+            sleep 1
+          done
+          echo "  健康状态：$st"
+
+          echo "▸ 断言：管理员账号已自动创建"
+          login_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18080/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"account":"admin","password":"ciadminpass"}')"
+          [ "$login_code" = "200" ] || { echo "::error::管理员登录失败（$login_code）"; docker logs --tail 60 ci-app; exit 1; }
+          echo "  登录成功"
+
+          echo "✅ 冒烟测试全部通过"
+
+      # ---------- 推送（只有配了 secrets 才执行） ----------
+      - name: 推送到镜像仓库
+        if: ${{ steps.cfg.outputs.push == 'true' }}
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TAGS" | while IFS= read -r t; do
+            [ -z "$t" ] && continue
+            echo "▸ docker push $t"
+            docker push "$t"
+          done
+
+      - name: 输出摘要
+        if: always()
+        env:
+          PUSH: ${{ steps.cfg.outputs.push }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### 构建 + 冒烟测试完成"
+            echo ''
+            echo "- 推送仓库：**$PUSH**"
+            if [ "$PUSH" = "false" ]; then
+              echo "- 说明：没有配置镜像仓库 secrets，本次只验证构建与运行"
+            fi
+            echo ''
+            echo '```'
+            printf '%s\n' "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
