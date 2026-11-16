@@ -10,19 +10,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # secrets 不能直接写在 step 的 if 里（GitHub 只允许 github/needs/strategy/matrix/job/runner/env/vars/steps/inputs），
+    # 所以先在这里落成普通环境变量，下面用 env.XXX 判断和取值。
+    env:
+      DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      ALI_REG: ${{ secrets.ALIYUN_REGISTRY }}
+      ALI_NS: ${{ secrets.ALIYUN_NAMESPACE }}
     steps:
       - name: 取出源码
         uses: actions/checkout@v4
 
       # ---------- 先算出要推到哪些仓库 ----------
-      # 只把「配置了 secrets 的仓库」列进来：
-      # 没配 Docker Hub 就只推阿里云，反之亦然；两个都没配则直接失败并说明原因。
+      # 只把「配置了 secrets 的仓库」列进来：没配 Docker Hub 就只推阿里云，反之亦然。
       - name: 计算镜像仓库
         id: images
-        env:
-          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-          ALI_REG: ${{ secrets.ALIYUN_REGISTRY }}
-          ALI_NS: ${{ secrets.ALIYUN_NAMESPACE }}
         run: |
           set -e
           IMAGES=""
@@ -50,14 +51,14 @@ jobs:
 
       # ---------- 登录（没有对应 secret 时自动跳过） ----------
       - name: 登录 Docker Hub
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        if: ${{ env.DH_USER != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: 登录阿里云 ACR
-        if: ${{ secrets.ALIYUN_REGISTRY != '' }}
+        if: ${{ env.ALI_REG != '' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.ALIYUN_REGISTRY }}
