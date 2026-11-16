@@ -49,11 +49,34 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # ---------- 登录 ----------
+      # 说明：GitHub 的 runner 在海外，连阿里云的认证域名（dockerauth.<region>.aliyuncs.com）
+      # 时常被 reset —— 属于网络抖动而不是密码错，所以这里重试 3 次。
+      # 真的连不通时给出可操作的排查方向，而不是抛一段看不懂的 daemon 报错。
       - name: 登录阿里云 ACR
         run: |
-          set -e
-          echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USER" --password-stdin
-          echo "✔ 已登录 $ACR_REGISTRY"
+          set -uo pipefail
+
+          echo "▸ 先探一下注册表连通性"
+          code="$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "https://${ACR_REGISTRY}/v2/" 2>/dev/null || echo "000")"
+          echo "  https://${ACR_REGISTRY}/v2/ -> HTTP ${code}"
+
+          for attempt in 1 2 3; do
+            echo "▸ docker login 第 ${attempt} 次尝试"
+            if echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USER" --password-stdin; then
+              echo "✔ 已登录 $ACR_REGISTRY"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "  失败，10 秒后重试…"
+              sleep 10
+            fi
+          done
+
+          echo "::error::登录阿里云 ACR 失败（3 次均失败）。常见原因："
+          echo "  1) 密码不是「访问凭证」里的固定密码 —— 去 ACR 控制台重置一次"
+          echo "  2) GitHub runner 在海外，连 dockerauth.<region>.aliyuncs.com 被 reset —— 稍后重跑，或改用国内自建 runner"
+          echo "  3) 仓库/命名空间还没建：${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}"
+          exit 1
 
       - name: 登录 Docker Hub（可选）
         if: ${{ env.DH_USER != '' }}
@@ -174,6 +197,7 @@ jobs:
           echo "✅ 冒烟测试全部通过"
 
       # ---------- 推送（测试通过之后才推） ----------
+      # 同样带重试：跨境推大层时偶发 reset，重试一次通常就过去了
       - name: 推送到阿里云 ACR
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
@@ -181,8 +205,12 @@ jobs:
           set -euo pipefail
           printf '%s\n' "$TAGS" | while IFS= read -r t; do
             [ -z "$t" ] && continue
-            echo "▸ docker push $t"
-            docker push "$t"
+            for attempt in 1 2 3; do
+              echo "▸ docker push $t （第 ${attempt} 次）"
+              if docker push "$t"; then break; fi
+              if [ "$attempt" = 3 ]; then echo "::error::推送 $t 失败（3 次）"; exit 1; fi
+              sleep 10
+            done
           done
           echo "✔ 镜像已推送到 ${{ steps.cfg.outputs.main }}"
 
