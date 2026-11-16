@@ -1,0 +1,51 @@
+# ============================================================
+# 只提交「源码」，本地运行环境 / 依赖 / 构建产物 / 用户数据一律不进仓库
+# ============================================================
+
+# ---------- 本地运行环境（最大的一块，约 2.4 GB）----------
+# 便携版 PostgreSQL / MariaDB 的可执行文件与**数据库数据目录**、
+# Go 的构建缓存，都是本机测试环境，换台机器重新准备即可
+.tools/
+.deploy/
+
+# ---------- 依赖与构建产物 ----------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+docs/node_modules/
+docs/dist/
+docs/.docusaurus/
+# docs 里 npm 的本地缓存（几十 MB，全是 tarball）
+docs/.npm-cache/
+
+# 编译出来的二进制
+backend/bin/
+*.exe
+release/
+
+# ---------- 运行期内容（用户数据，不是代码）----------
+# 文章正文 HTML、上传的图片、blog.sh 的备份输出
+data/
+uploads/
+backups/
+
+# ---------- 配置与密钥 ----------
+.env
+*.local
+*.pem
+*.key
+
+# ---------- 其它 ----------
+# 设计评审截图与草稿
+ui-review/
+*.log
+*.zip
+*.tar.gz
+.DS_Store
+Thumbs.db
+
+# 历史遗留的本地数据库文件
+*.db
+*.db-journal
+*.sqlite
+

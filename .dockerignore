@@ -1,0 +1,21 @@
+# 只把构建真正需要的东西送进镜像上下文，否则 node_modules / 数据库 / 上传文件
+# 会让 build 变慢几十倍（.tools 里还有一整套 PostgreSQL，别把它传进 Docker）
+.tools/
+.deploy/
+release/
+ui-review/
+docs/
+data/
+uploads/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.zip
+*.tar.gz
+*.exe
+*.log
+.env
+.git/
+.gitignore
+DEPLOY.md
+deploy.ps1

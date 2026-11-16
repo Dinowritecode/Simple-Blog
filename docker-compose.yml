@@ -1,0 +1,99 @@
+# ============================================================
+# 一键启动整套环境：PostgreSQL + Redis + 博客后端
+#
+#   1) cp .env.example .env      然后改掉里面的两个密码
+#   2) docker compose up -d --build
+#   3) 打开 http://服务器IP:8080
+#
+# 常用命令：
+#   docker compose ps            看状态
+#   docker compose logs -f app   看后端日志
+#   docker compose restart app   改完配置重启
+#   docker compose down          停止（数据卷保留）
+#   docker compose down -v       停止并删除数据（⚠️ 库和图片都会没）
+# ============================================================
+
+services:
+  # ---------- 数据库 ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: blog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-blog}
+      POSTGRES_USER: ${DB_USER:-blog}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?请在 .env 里设置 DB_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-blog} -d ${DB_NAME:-blog}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # 注意：刻意不写 ports —— 数据库只在内网给 app 用，不暴露到宿主机
+
+  # ---------- 缓存 / 在线状态 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: blog-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # 同理，不对宿主机暴露端口
+
+  # ---------- 博客本体 ----------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rin-eyce/blog:latest
+    container_name: blog-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      STATIC_DIR: /app/dist
+      UPLOAD_DIR: /app/uploads
+      POST_CONTENT_DIR: /app/data/posts
+      # 容器里连数据库用服务名 postgres，不是 127.0.0.1
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-blog}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-blog}
+      DB_SSLMODE: disable
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 里设置 ADMIN_PASSWORD}
+      REDIS_ADDR: redis:6379
+      TZ: Asia/Shanghai
+    volumes:
+      - uploads:/app/uploads
+      - posts:/app/data/posts
+    ports:
+      # 只绑本机：前面用 Nginx / 1Panel 反代到 8080。
+      # 想直接 http://IP:8080 访问，改成 "8080:8080"
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/stats >/dev/null 2>&1 || exit 1"]
+      # interval 短一点，blog.sh update 才能更快判定「新版本已就绪」
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 6
+
+volumes:
+  pgdata:     # 数据库
+  redisdata:  # Redis AOF
+  uploads:    # 用户上传的图片
+  posts:      # 文章正文 HTML

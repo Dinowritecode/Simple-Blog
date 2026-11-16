@@ -1,0 +1,484 @@
+/* ============================================================
+   凛冬RinEyce · 简约个人站
+   全局基础样式：字体 / 变量 / 重置 / 共享工具类
+   ============================================================ */
+
+/* ---------- 自定义字体 ----------
+   Gen Jyuu Gothic（思源柔黑）放在 public/font 下：
+   · public 里的文件是「原样静态服务」，不经过打包，也不参与 Vite 的文件监听
+     （放 src 下会被 chokidar watch，写入时 EBUSY 会把 dev server 直接干掉）
+   · 用 woff2（3.2 MB），从原始 10 MB 的 TTF 转来（fontTools，无损、字形完全一致）；
+     现代浏览器全都支持 woff2，所以不再附带 TTF 兜底
+   · font-display: swap 让文字先用系统字体显示，字体到位后再替换，不会白屏
+   · 只声明 regular 一个字重；用到 bold 时浏览器会做合成加粗 */
+@font-face {
+  font-family: "GenJyuuGothic";
+  src: url("/font/GenJyuuGothic-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* 浅色主题 */
+  --bg: #fafafa;
+  --bg-alt: #f0f2f5;
+  --card: #ffffff;
+  --text: #1a1d23;
+  --text-dim: #5c6572;
+  --border: #e5e7eb;
+  --accent: #00AAEE;        /* 主题色（蔚蓝；后台「外观定制」里可改，运行时会覆盖这个值） */
+  /* 主题色的淡色版：由 --accent 推导，所以改主题色时它会自动跟着变 */
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  /* 代码块配色（GitHub Light）：注释 / 字符串 / 数字 / 关键字 / 类型 / 函数 / 宏。
+     正文页的代码高亮用它，深色主题在下面整组换掉。 */
+  --code-surface: #f6f8fa;
+  --code-border: #e5e7eb;
+  --code-kw: #cf222e;
+  --code-str: #0a3069;
+  --code-num: #0550ae;
+  --code-com: #6e7781;
+  --code-fn: #8250df;
+  --code-ty: #953800;
+  --code-meta: #116329;
+
+  /* 主题色一共三档，全部由 --accent 派生 —— 后台改主题色，三档一起变：
+       --accent        品牌色：描边、柔和底纹、图标、装饰
+       --accent-fill   实底表面（按钮、徽标、选中标签）的底色
+                       **按站长要求直接用品牌蔚蓝本身**（之前为了白字对比度压深过一档，
+                       视觉上偏藏青、不像品牌色，已改回）。
+                       注意：白字压在这个蓝上是 2.6:1，属于「好看优先」的取舍；
+                       想让文字达到 4.5:1 又不换蓝，把 --on-accent 改成深色即可。
+       --accent-ink    浅底上的主题色**文字**（链接、标签文字）
+                       仍然用深一档，保证小字号也读得清；深色主题下反向调亮 */
+  --accent-fill: var(--accent);
+  --accent-ink: color-mix(in srgb, var(--accent) 58%, #06202e);
+  --on-accent: #fff;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.04);
+  --radius: 14px;
+  --nav-h: 60px;             /* 顶部导航栏高度：导航栏自身与首页 hero 上移量共用 */
+  /* 阅读列宽度：博客列表 / 文章详情 / 搜索结果统一用它，
+     这样三个页面的正文左边缘在同一条竖线上（原来分别是 744 / 780 / 900，切换页面会左右跳）。 */
+  --content-col: 744px;
+  /* 外观定制：每个模块的「底色浓度」和「模糊」都是独立的，后台「设置 → 外观定制」可调
+       --glass-panel-*：下方毛玻璃区域（首页下半部分 / 文章详情页面板 / 页脚）
+       --glass-solid-*：带模糊的卡片（技能 / 项目 / 数据块 / 名片 / 公告 / 统计 / 后台面板…）
+       --card-*       ：文章卡片（列表卡片）
+       --glass-nav-*  ：导航栏（滚到顶变色后的状态）
+     浓度数字是「掺多少底色」，越小越透明；模糊是 px，0 = 不模糊。 */
+  /* 面板底色只在浅色主题里用「后台设的自定义色」；
+     夜间模式由下面的 html[data-theme="dark"] 强制换成夜间黑，
+     所以无论后台设成什么颜色，切到夜间模式都会统一变黑。
+     这几个变量由 useSite.applyTheme() 在运行时写入（只写自定义色与浓度，
+     不直接写 --glass-panel-bg），深浅主题的判断完全交给 CSS。 */
+  --panel-color-custom: #ffffff;
+  --panel-alpha: 100%;
+  --panel-base: var(--panel-color-custom);
+  --glass-panel-bg: color-mix(in srgb, var(--panel-base) var(--panel-alpha), transparent);
+  --glass-panel-blur: none; /* 不加模糊：只做底色半透明，不糊背景 */
+  --glass-solid-bg: color-mix(in srgb, var(--card) 50%, transparent);
+  --glass-solid-blur: blur(18px) saturate(160%);
+  --card-bg: color-mix(in srgb, var(--card) 50%, transparent);
+  --card-blur: none;
+  --glass-nav-bg: color-mix(in srgb, var(--card) 55%, transparent);
+  --glass-nav-blur: blur(18px) saturate(160%);
+  /* 卡片描边。以前面板是半透明压在照片上，描边会变成一圈白边，所以设成透明；
+     现在面板改成不透明白，卡片是「50% 白 + 白色底」，不描边就几乎看不见边界，
+     所以给一道很淡的线把结构找回来。 */
+  --glass-border: color-mix(in srgb, var(--text) 9%, transparent);
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, ui-monospace, monospace;
+}
+
+html[data-theme="dark"] {
+  --bg: #0e1116;
+  --bg-alt: #141922;
+  --card: #171c26;
+  --text: #e5e9f0;
+  --text-dim: #8b93a3;
+  --border: #232a36;
+  /* 深色主题沿用同一个主题色；--accent-soft 由它推导，不必重复写 */
+  --accent: #00AAEE;
+  /* 深底上主题色文字要往亮走（深一档反而糊），实底按钮仍用 --accent-fill */
+  --accent-ink: color-mix(in srgb, var(--accent) 78%, #ffffff);
+  /* 夜间模式：面板底色统一强制成夜间黑 —— 不管后台把底色设成什么颜色。
+     只覆盖 --panel-base，浓度仍沿用后台设置；--glass-panel-bg 会自动重算。 */
+  --panel-base: #0e1116;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+
+  /* 代码块配色（GitHub Dark）：整组换掉，深色底上这组颜色都还拿得住对比度 */
+  --code-surface: #161b22;
+  --code-border: #30363d;
+  --code-kw: #ff7b72;
+  --code-str: #a5d6ff;
+  --code-num: #79c0ff;
+  --code-com: #8b949e;
+  --code-fn: #d2a8ff;
+  --code-ty: #ffa657;
+  --code-meta: #7ee787;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.7;
+  transition: background 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent); color: #fff; }
+
+/* 键盘焦点统一用品牌色描边（原来浏览器给了个 2px 黑环，和整套配色不搭）。
+   描边用深一档的 --accent-ink：焦点环要靠「看得见」起作用，2.6:1 的亮蓝在白底上偏弱。 */
+:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+a { color: var(--accent-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* 强调字（首页大名字的「凛冬」、区块标题里的英文、导航品牌）用品牌蔚蓝本身。
+   这些都在 24px 以上的展示字号上，不需要压深。 */
+.accent { color: var(--accent); }
+
+/* ---------------- 共享按钮 ---------------- */
+
+.btn {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.btn:hover { text-decoration: none; transform: translateY(-2px); }
+
+.btn-primary { background: var(--accent-fill); color: var(--on-accent); box-shadow: 0 4px 14px var(--accent-soft); }
+.btn-primary:hover { filter: brightness(1.12); box-shadow: 0 6px 20px var(--accent-soft); }
+
+.btn-ghost { border: 1px solid var(--border); color: var(--text); background: transparent; }
+.btn-ghost:hover { border-color: var(--accent-fill); color: var(--accent-ink); }
+
+/* ---------------- 共享区块 ---------------- */
+
+.section {
+  /* 上下留白收到 40：区块之间更紧凑（首页首屏那块由 .lower 的 padding-top 统一给） */
+  padding: 40px 24px;
+  /* 首页下半部分要左右各让出一栏（名片 / 公告+统计）：
+     HomeView 通过 --content-inset-left / --content-inset-right 注入这段额外内边距，
+     正文因此在「剩下的空间」里居中 → 两侧留白自动相等（三栏整体居中）。
+     其它页面没有定义这两个变量，回退 0，布局完全不变。 */
+  padding-left: calc(24px + var(--content-inset-left, 0px));
+  padding-right: calc(24px + var(--content-inset-right, 0px));
+}
+.section-alt { background: var(--bg-alt); }
+/* 正文列宽度：首页要和左侧名片凑成「整体居中」，所以从 960 压到 744
+   （744 + 名片 260 + 间距 28 = 1032 = 导航栏内容区宽度，两侧因此也对齐）。
+   改这里要同步 HomeView.vue 里 .lower 的 --content-width。 */
+.section-inner { max-width: var(--content-col); margin: 0 auto; }
+
+/* ---------------- 毛玻璃内容块 ----------------
+   底色和模糊都用各模块自己的变量（见 :root 的说明），
+   选择器比各组件内 scoped 的规则多半级，才能盖掉它们原本的 --card 实底。 */
+
+/* 文章卡片：底色与模糊由 --card-* 控制（后台可调，默认不带模糊） */
+.section-inner .blog-grid .post-card {
+  background: var(--card-bg);
+  backdrop-filter: var(--card-blur);
+  -webkit-backdrop-filter: var(--card-blur);
+}
+
+/* 技能卡 / 项目卡 / 关于我右侧数据块：保持毛玻璃 */
+.section-inner .skills-grid .skill-card,
+.section-inner .projects-grid .project-card,
+.section-inner .about-stats .stat {
+  background: var(--glass-solid-bg);
+  backdrop-filter: var(--glass-solid-blur);
+  -webkit-backdrop-filter: var(--glass-solid-blur);
+}
+
+/* 关于我：左侧文字块 */
+.section-inner .about-grid .about-text {
+  background: var(--glass-solid-bg);
+  backdrop-filter: var(--glass-solid-blur);
+  -webkit-backdrop-filter: var(--glass-solid-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 26px 28px;
+}
+
+/* 联系：整块内容 */
+.section-inner.contact-inner {
+  background: var(--glass-solid-bg);
+  backdrop-filter: var(--glass-solid-blur);
+  -webkit-backdrop-filter: var(--glass-solid-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 44px 32px;
+}
+
+/* 区块小标题：不再有白色圆角底，就是「主题色竖线 + 文字」 */
+.section-title {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  /* 标题与下方卡片之间的间距也压紧 */
+  margin-bottom: 20px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+}
+.section-title .accent { margin-right: 6px; }
+
+/* ---------------- 卡片标题前的主题色粗短竖线（替代原来的 # 号） ---------------- */
+.title-bar {
+  display: inline-block;
+  width: 4px;
+  height: 0.95em;
+  flex-shrink: 0;
+  border-radius: 0; /* 直角，不要圆角 */
+  background: var(--accent);
+  margin-right: 7px;
+}
+
+/* 压在首页背景图上时，导航栏里的图标按钮（含用户菜单的铃铛）也转白。
+   必须放在全局：原来写在 NavBar 的 scoped 样式里，scoped 属性只加在最后一个
+   选择器上，UserMenu 里的铃铛匹配不到，于是一直保持灰色。 */
+.nav-over-image .icon-btn { color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+.nav-over-image .icon-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.16); }
+
+/* ---------------- 通用图标按钮（导航栏主题切换 / 菜单，用户菜单里的通知铃铛…） ----------------
+   放在全局而不是某个组件里：原来它写在 NavBar 的 scoped 样式里，
+   别的组件用 .icon-btn 拿不到样式，铃铛就显示成浏览器默认的方块底。 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.icon-btn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+
+/* ---------------- 滚动出现动画（配合 v-reveal 指令） ---------------- */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.visible { opacity: 1; transform: none; }
+
+/* 减少动效偏好：滚动出现动画全部关掉，内容直接就是可见状态。
+   这是硬性无障碍要求 —— 动画之外，更重要的是**内容不能因为动画没触发而一直隐藏**。 */
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------------- 文章正文排版（wangEditor 输出 HTML） ---------------- */
+
+.post-content {
+  font-size: 16.5px;
+  line-height: 1.9;
+  color: var(--text);
+  word-break: break-word;
+}
+.post-content h1, .post-content h2, .post-content h3, .post-content h4 {
+  margin: 1.6em 0 0.7em;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.post-content h1 { font-size: 1.6em; }
+.post-content h2 { font-size: 1.4em; }
+.post-content h3 { font-size: 1.2em; }
+.post-content p { margin: 0.9em 0; }
+.post-content a { color: var(--accent-ink); text-decoration: underline; }
+.post-content img {
+  max-width: 100%;
+  border-radius: 10px;
+  margin: 1em 0;
+  display: block;
+  border: 1px solid var(--border);
+}
+.post-content blockquote {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  margin: 1.2em 0;
+  padding: 0.8em 1.2em;
+  border-radius: 0 10px 10px 0;
+  color: var(--text-dim);
+}
+.post-content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+}
+.post-content pre {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  margin: 1.2em 0;
+}
+.post-content pre code {
+  background: none;
+  color: var(--text);
+  padding: 0;
+}
+.post-content ul, .post-content ol { margin: 0.9em 0; padding-left: 1.6em; }
+.post-content li { margin: 0.35em 0; }
+.post-content table {
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  width: 100%;
+}
+.post-content th, .post-content td {
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  text-align: left;
+}
+.post-content th { background: var(--bg-alt); }
+.post-content hr { border: none; border-top: 1px dashed var(--border); margin: 2em 0; }
+
+/* ---------------- 响应式基础 ---------------- */
+
+@media (max-width: 760px) {
+  .section { padding: 40px 20px; }
+}
+
+/* ============================================================
+   用户系统共享样式（头像 / 徽标 / 弹窗 / 下拉 / 评论区）
+   ============================================================ */
+
+/* 圆形头像（图片或首字母占位，size 用 CSS 变量控制） */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar-size, 36px);
+  height: var(--avatar-size, 36px);
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 700;
+  user-select: none;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-letter { font-size: calc(var(--avatar-size, 36px) * 0.45); }
+
+/* 「站长」徽标（评论区作者） */
+.badge-admin {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+
+/* 通用弹窗遮罩/卡片 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+  padding: 20px;
+}
+.modal-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 420px;
+  padding: 28px;
+  position: relative;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.modal-card h3 { font-size: 1.15rem; margin-bottom: 18px; }
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+}
+.modal-close:hover { color: var(--text); }
+
+/* 弹窗内表单 */
+.m-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.m-field > span { font-size: 13.5px; color: var(--text-dim); }
+.m-field input, .m-field textarea {
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14.5px;
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+.m-field input:focus, .m-field textarea:focus { border-color: var(--accent); }
+
+/* 输入区小按钮 */
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  border-radius: 9px;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-sm:hover { filter: brightness(1.12); transform: translateY(-1px); }
+.btn-sm:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-sm.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-sm.danger { background: rgba(229, 72, 77, 0.12); color: #e5484d; }
+
+/* 过渡动画 */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.pop-enter-active, .pop-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.pop-enter-from, .pop-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
