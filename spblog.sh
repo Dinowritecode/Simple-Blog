@@ -27,8 +27,10 @@ set -euo pipefail
 
 # ---------- 可配置项（都有默认值，用命令行参数可覆盖） ----------
 ROOT="${BLOG_DIR:-/opt/blog}"                 # 站点目录（只放 compose 文件）
-IMAGE_REPO="${IMAGE_REPO:-dinowritecode/simple-blog}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+# 镜像：留空表示「跟随已有部署」—— 会在 resolve_image 里从正在运行的容器反查，
+# 这样 `install --image 阿里云/...` 之后，直接 `spblog update` 也会用同一个仓库。
+IMAGE_REPO="${IMAGE_REPO:-}"
+IMAGE_TAG="${IMAGE_TAG:-}"
 APP_PORT="${APP_PORT:-127.0.0.1:8080}"        # 只监听本机，前面挂 Nginx
 APP_NAME=blog-app
 PG_NAME=blog-postgres
@@ -41,6 +43,33 @@ info() { printf '%s\n' "${C_DIM}▸${C_END} $*"; }
 ok()   { printf '%s\n' "${C_OK}✔${C_END} $*"; }
 warn() { printf '%s\n' "${C_WARN}!${C_END} $*"; }
 die()  { printf '%s\n' "${C_ERR}✘${C_END} $*" >&2; exit 1; }
+
+# ---------- 镜像地址：没显式指定就跟已有部署走 ----------
+# 拆 "registry:5000/ns/repo:tag" 这种带端口的引用（只按最后一段的冒号切 tag）
+split_image() {
+  local ref="$1" last="${1##*/}"
+  if [ "$last" != "${last%%:*}" ]; then
+    printf '%s %s' "${ref%:*}" "${last##*:}"
+  else
+    printf '%s %s' "$ref" "latest"
+  fi
+}
+
+resolve_image() {
+  if [ -z "$IMAGE_REPO" ]; then
+    local cur repo tag
+    cur="$(docker inspect -f '{{.Config.Image}}' "$APP_NAME" 2>/dev/null || true)"
+    if [ -n "$cur" ]; then
+      read -r repo tag <<<"$(split_image "$cur")"
+      IMAGE_REPO="$repo"
+      [ -z "$IMAGE_TAG" ] && IMAGE_TAG="$tag"
+      info "沿用已有部署的镜像：${IMAGE_REPO}:${IMAGE_TAG}"
+    else
+      IMAGE_REPO="crpi-jlqf5sfrp7vsp54s.cn-hangzhou.personal.cr.aliyuncs.com/rineyce/spblog"
+    fi
+  fi
+  [ -n "$IMAGE_TAG" ] || IMAGE_TAG="latest"
+}
 
 # ---------- 依赖 ----------
 need_docker() {
@@ -134,8 +163,10 @@ YAML
   ok "已生成 $COMPOSE_FILE"
 }
 
-ensure_compose() {
-  [ -f "$COMPOSE_FILE" ] || write_compose
+ensure_compose() {  # $1=force 时强制重新生成（install 用）
+  if [ "${1:-}" = "force" ] || [ ! -f "$COMPOSE_FILE" ]; then
+    write_compose
+  fi
   cd "$ROOT"
 }
 
@@ -175,7 +206,8 @@ wait_healthy() {
 # ---------- 安装 ----------
 cmd_install() {
   need_docker
-  ensure_compose
+  resolve_image
+  ensure_compose force
   load_secrets
 
   local fresh_admin=0
@@ -219,8 +251,9 @@ cmd_install() {
 # ---------- 更新 ----------
 cmd_update() {
   need_docker
-  ensure_compose
   load_secrets
+  resolve_image
+  ensure_compose
   [ -n "$DB_PASSWORD" ] || die "没找到已有部署（$PG_NAME 容器不存在），请先执行 install"
   export DB_PASSWORD ADMIN_PASSWORD
 
@@ -274,8 +307,9 @@ cmd_passwd() {
 
 cmd_rollback() {
   need_docker
-  ensure_compose
   load_secrets
+  resolve_image
+  ensure_compose
   export DB_PASSWORD ADMIN_PASSWORD
   docker image inspect "${IMAGE_REPO}:previous" >/dev/null 2>&1 \
     || die "没有 previous 镜像。想回到某个提交：IMAGE_TAG=sha-xxxxxxx spblog update"
@@ -304,6 +338,7 @@ cmd_backup() {
 
 cmd_status() {
   need_docker
+  resolve_image
   ensure_compose
   $DC ps
   printf '\n'
@@ -313,10 +348,10 @@ cmd_status() {
 
 cmd_logs()    { need_docker; ensure_compose; $DC logs -f --tail 100 app; }
 cmd_restart() {
-  need_docker; ensure_compose; load_secrets; export DB_PASSWORD ADMIN_PASSWORD
+  need_docker; load_secrets; resolve_image; ensure_compose; export DB_PASSWORD ADMIN_PASSWORD
   $DC up -d --no-deps app; ok "已重启"
 }
-cmd_down()    { need_docker; ensure_compose; load_secrets; export DB_PASSWORD ADMIN_PASSWORD; $DC down; ok "已停止（数据卷保留）"; }
+cmd_down()    { need_docker; load_secrets; resolve_image; ensure_compose; export DB_PASSWORD ADMIN_PASSWORD; $DC down; ok "已停止（数据卷保留）"; }
 
 usage() {
   cat <<'EOF'
@@ -332,7 +367,7 @@ usage() {
 
 可用环境变量覆盖默认值：
   BLOG_DIR=/opt/blog        站点目录
-  IMAGE_REPO=xxx/yyy        镜像仓库（默认 dinowritecode/simple-blog）
+  IMAGE_REPO=xxx/yyy        镜像仓库（默认阿里云 ACR: rineyce/spblog）
   IMAGE_TAG=latest          镜像标签（也可填 sha-xxxxxxx 回退到某次提交）
   APP_PORT=127.0.0.1:8080   端口绑定
 EOF

@@ -7,70 +7,59 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+env:
+  ACR_REGISTRY: crpi-jlqf5sfrp7vsp54s.cn-hangzhou.personal.cr.aliyuncs.com
+  ACR_NAMESPACE: rineyce
+  ACR_REPO: spblog
+  ACR_USER: ${{ secrets.ACR_USERNAME }}
+  ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+
 jobs:
   build:
     # 固定版本而不是 ubuntu-latest：避免 2026-10 之后 latest 换到 26.04 带来意外
     runs-on: ubuntu-24.04
-    # secrets 不能写在 step 的 if 里（GitHub 只允许 github/needs/strategy/matrix/job/runner/env/vars/steps/inputs），
-    # 所以先落成普通环境变量，下面用 env.XXX 判断。
+    # secrets 不能出现在 step 的 if 里，先落成普通环境变量
     env:
       DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-      ALI_REG: ${{ secrets.ALIYUN_REGISTRY }}
-      ALI_NS: ${{ secrets.ALIYUN_NAMESPACE }}
     steps:
       - name: 取出源码
         uses: actions/checkout@v5
 
-      # ---------- 判断这次是「只构建」还是「构建+推送」 ----------
-      # 没配镜像仓库 secrets 时：只构建 + 冒烟测试，不推送 —— CI 照样是绿的。
-      # 以后想推仓库，补上 secrets 即可，这个文件不用改。
-      - name: 检查镜像仓库配置
+      # ---------- 计算要推送的镜像地址 ----------
+      # 阿里云 ACR 是主仓库；配了 Docker Hub secrets 就顺带推一份（可选）
+      - name: 计算镜像地址
         id: cfg
         run: |
           set -e
-          IMAGES=""
-          PUSH="false"
+          IMAGES="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}"
           if [ -n "$DH_USER" ]; then
-            IMAGES="${DH_USER}/simple-blog"
-            PUSH="true"
+            IMAGES="${IMAGES}
+          ${DH_USER}/spblog"
           fi
-          if [ -n "$ALI_REG" ] && [ -n "$ALI_NS" ]; then
-            IMAGES="${IMAGES:+$IMAGES
-          }${ALI_REG}/${ALI_NS}/simple-blog"
-            PUSH="true"
-          fi
-          if [ -z "$IMAGES" ]; then
-            IMAGES="local/simple-blog"
-            echo "::notice::没有配置镜像仓库 secrets —— 本次只构建并做冒烟测试，不推送"
-          else
-            echo "将会推送到："
-            echo "$IMAGES"
-          fi
+          echo "将会推送："
+          echo "$IMAGES"
           {
             echo "images<<IMAGES_EOF"
             echo "$IMAGES"
             echo "IMAGES_EOF"
-            echo "push=$PUSH"
+            echo "main=${ACR_REGISTRY}/${ACR_NAMESPACE}/${ACR_REPO}"
           } >> "$GITHUB_OUTPUT"
 
       - name: 准备 Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ---------- 登录（没有对应 secret 时自动跳过） ----------
-      - name: 登录 Docker Hub
-        if: ${{ env.DH_USER != '' }}
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+      # ---------- 登录 ----------
       - name: 登录阿里云 ACR
-        if: ${{ env.ALI_REG != '' }}
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.ALIYUN_REGISTRY }}
-          username: ${{ secrets.ALIYUN_USERNAME }}
-          password: ${{ secrets.ALIYUN_PASSWORD }}
+        run: |
+          set -e
+          echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USER" --password-stdin
+          echo "✔ 已登录 $ACR_REGISTRY"
+
+      - name: 登录 Docker Hub（可选）
+        if: ${{ env.DH_USER != '' }}
+        run: |
+          set -e
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "$DH_USER" --password-stdin
 
       # ---------- 标签 ----------
       # latest       : 默认分支构建
@@ -92,8 +81,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          # 注意：buildx 不允许 push 和 load 同时为 true，
-          # 所以这里只构建并加载到本地，推送交给下一步的 docker push
+          # buildx 不允许 push 和 load 同时为 true，
+          # 所以只构建并加载到本地，推送交给最后一步 docker push
           push: false
           load: true
           platforms: linux/amd64
@@ -103,10 +92,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       # ---------- 冒烟测试：真的把容器跑起来 ----------
-      # 验证的是「镜像能构建」之外的三件事：
-      #   1. 进程能启动（不因为缺 tzdata / 权限 / 目录不存在而崩）
-      #   2. 能连上 PostgreSQL 并自动建表（迁移没问题）
-      #   3. 前端产物确实在镜像里（/ 返回 index.html），健康检查能变 healthy
+      # 验证：进程能启动 / 能连数据库并建表 / 前端产物在镜像里 / 健康检查通过 / 站长账号能登录
       - name: 冒烟测试（起容器 + 连数据库 + 打接口）
         env:
           IMG: ${{ steps.meta.outputs.tags }}
@@ -187,9 +173,8 @@ jobs:
 
           echo "✅ 冒烟测试全部通过"
 
-      # ---------- 推送（只有配了 secrets 才执行） ----------
-      - name: 推送到镜像仓库
-        if: ${{ steps.cfg.outputs.push == 'true' }}
+      # ---------- 推送（测试通过之后才推） ----------
+      - name: 推送到阿里云 ACR
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
@@ -199,22 +184,30 @@ jobs:
             echo "▸ docker push $t"
             docker push "$t"
           done
+          echo "✔ 镜像已推送到 ${{ steps.cfg.outputs.main }}"
 
       - name: 输出摘要
         if: always()
         env:
-          PUSH: ${{ steps.cfg.outputs.push }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           {
-            echo "### 构建 + 冒烟测试完成"
+            echo "### 构建 + 冒烟测试 + 推送"
             echo ''
-            echo "- 推送仓库：**$PUSH**"
-            if [ "$PUSH" = "false" ]; then
-              echo "- 说明：没有配置镜像仓库 secrets，本次只验证构建与运行"
-            fi
+            echo "仓库：\`${{ steps.cfg.outputs.main }}\`"
             echo ''
             echo '```'
             printf '%s\n' "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+# ============================================================
+# 想更安全（推荐以后改）：把上面 env 里的账号密码删掉，换成
+#
+#   env:
+#     ACR_USER: ${{ secrets.ACR_USERNAME }}
+#     ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+#
+# 然后到 Settings → Secrets and variables → Actions 里加这两个 secret。
+# 同时去阿里云控制台把现在这个固定密码重置一次（它已经出现在仓库历史里了）。
+# ============================================================
