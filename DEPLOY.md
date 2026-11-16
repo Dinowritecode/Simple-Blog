@@ -19,20 +19,90 @@
 
 整套环境（PostgreSQL + Redis + 博客）都在仓库里定义好了，服务器上只需要 Docker。
 
+### CI/CD 全链路（推荐做法）
+
+```
+本地 git push ──► GitHub Actions 构建镜像 ──► 推 Docker Hub / 阿里云 ACR
+                                                      │
+服务器：spblog update ──► docker compose pull ──► 健康检查 ──► 切换（失败自动回滚）
+```
+
+**服务器上不需要 `.env`，也不需要源码** —— 密码在首次安装时自动生成并存进容器配置，
+`docker-compose.yml` 由脚本自己写出来。
+
+**① 仓库里已经带好 workflow**：[.github/workflows/docker.yml](.github/workflows/docker.yml)
+
+推 `main` 会构建并推送这些标签：
+
+| 标签 | 用途 |
+| --- | --- |
+| `latest` | 服务器日常跟进 |
+| `sha-abc1234` | 每次提交都有，回滚时直接指定 |
+| `v1.2.3` | 打 tag 发版时 |
+
+**② 在 GitHub 配 Secrets**（Settings → Secrets and variables → Actions）
+
+| Secret | 说明 |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Docker Hub 用户名 |
+| `DOCKERHUB_TOKEN` | Docker Hub **Access Token**（不是登录密码） |
+| `ALIYUN_REGISTRY` | 例 `registry.cn-chengdu.aliyuncs.com`（不用阿里云就别配） |
+| `ALIYUN_NAMESPACE` | ACR 命名空间 |
+| `ALIYUN_USERNAME` / `ALIYUN_PASSWORD` | ACR 的登录账号密码 |
+
+**③ 服务器部署（一行）**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Dinowritecode/Simple-Blog/main/spblog.sh -o /usr/local/bin/spblog \
+  && chmod +x /usr/local/bin/spblog && spblog install
+```
+
+它会：生成数据库密码与站长密码（**站长密码只打印一次**）→ 写 `docker-compose.yml` →
+拉镜像 → 起 PostgreSQL / Redis / 应用 → 等健康检查通过。
+
+用阿里云 ACR 就加一个参数：
+
+```bash
+spblog install --image registry.cn-chengdu.aliyuncs.com/你的命名空间/simple-blog
+```
+
+**④ 日常发版（一行）**
+
+```bash
+spblog update
+```
+
+**⑤ 回退到某次提交**
+
+```bash
+spblog update --tag sha-abc1234
+```
+
+**⑥ 私有仓库要先登录一次**
+
+```bash
+docker login                                    # Docker Hub
+docker login registry.cn-chengdu.aliyuncs.com   # 阿里云 ACR
+```
+
 ### 最快路径：`blog.sh`
 
 项目根目录有一个 `blog.sh`，安装和更新都只有一行：
 
 ```bash
-# 第一次：生成密码、构建、启动、等健康
+# 第一次：生成密码、拉镜像、启动、等健康
 bash blog.sh install
 
 # 以后每次发版
-bash blog.sh update            # 只重建 app，数据库/Redis 不动
-bash blog.sh update --pull     # 目录是 git 仓库时，先拉代码再重建
+bash blog.sh update            # 从镜像仓库拉 CI 构建好的新镜像
+bash blog.sh update --build    # 本地重新构建（改了代码、还没走 CI）
 ```
 
 它会打印随机生成的站长密码（**只打印一次**），并把密码写进 `.env`。
+
+> 想让 `bash blog.sh` 变成更短的 `spblog`：
+> `sudo ln -sf /opt/blog/blog.sh /usr/local/bin/spblog && sudo chmod +x /opt/blog/blog.sh`
+> 之后直接 `spblog update`。
 
 其它命令：
 

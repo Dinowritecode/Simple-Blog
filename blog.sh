@@ -38,11 +38,24 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
 ROOT="${BLOG_DIR:-$SELF_DIR}"
 REPO="${BLOG_REPO:-}"
 
-IMAGE="rin-eyce/blog"
 APP_NAME="blog-app"
 PG_NAME="blog-postgres"
 ENV_FILE="$ROOT/.env"
 COMPOSE_FILE="$ROOT/docker-compose.yml"
+
+# ---------- 镜像地址 ----------
+# CI 推送到哪个仓库，服务器就从哪里拉。三种来源，优先级从高到低：
+#   1. 环境变量 IMAGE_REPO / IMAGE_TAG
+#   2. .env 里的同名项
+#   3. 默认值
+env_get() {
+  [ -f "$ENV_FILE" ] || return 0
+  sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1 | tr -d '\r' || true
+}
+IMAGE_REPO="${IMAGE_REPO:-$(env_get IMAGE_REPO)}"
+IMAGE_REPO="${IMAGE_REPO:-dinowritecode/simple-blog}"
+IMAGE_TAG="${IMAGE_TAG:-$(env_get IMAGE_TAG)}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
 
 # ---------- 颜色 ----------
 C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_END=$'\033[0m'
@@ -134,8 +147,15 @@ EOF
     info ".env 已存在，沿用其中的密码"
   fi
 
-  info "构建并启动（首次约 2~4 分钟）"
-  $DC up -d --build
+  # 有 CI 构建好的镜像就直接拉（几秒）；拉不到再退回本地构建（2~4 分钟）
+  info "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}"
+  if $DC pull app >/dev/null 2>&1; then
+    ok "镜像已就绪"
+    $DC up -d
+  else
+    warn "拉不到镜像（仓库私有 / 网络不通 / 还没跑过 CI），改为本地构建"
+    $DC up -d --build
+  fi
 
   info "等待服务健康"
   if wait_healthy "$APP_NAME" 180; then
@@ -152,31 +172,39 @@ EOF
 }
 
 # ---------- 更新 ----------
-# 可选 --pull：如果当前目录是 git 仓库，先拉最新代码
+# 默认：从镜像仓库拉 CI 构建好的镜像（服务器上的常态）
+#   --build : 本地重新构建镜像（改了代码、还没走 CI 时用）
+#   --pull  : 顺便 git 拉一下最新代码（只影响 Dockerfile/脚本等，不改镜像内容）
 cmd_update() {
   need_docker
-  local do_pull=0
-  [ "${1:-}" = "--pull" ] && do_pull=1
+  local mode="pull" do_pull=0 a
+  for a in "$@"; do
+    case "$a" in
+      --build) mode="build" ;;
+      --pull)  do_pull=1 ;;
+      "")      ;;
+      *)       warn "忽略未知参数：$a" ;;
+    esac
+  done
 
-  if [ "$do_pull" = "1" ]; then
-    if [ -d "$ROOT/.git" ]; then
-      info "拉取最新代码"
-      git -C "$ROOT" fetch --all --quiet
-      git -C "$ROOT" reset --hard '@{u}' --quiet || git -C "$ROOT" reset --hard --quiet
-    else
-      warn "当前目录不是 git 仓库，跳过拉代码"
+  if [ "$do_pull" = "1" ] && [ -d "$ROOT/.git" ]; then
+    info "拉取最新代码"
+    git -C "$ROOT" fetch --all --quiet || true
+    git -C "$ROOT" reset --hard '@{u}' --quiet || git -C "$ROOT" reset --hard --quiet || true
+  fi
+
+  # 记录当前镜像 ID：新版本起不来时原样恢复（pull 模式下最可靠的回滚依据）
+  local rollback_id=""
+  rollback_id="$(docker inspect -f '{{.Image}}' "$APP_NAME" 2>/dev/null || true)"
+
+  if [ "$mode" = "build" ]; then
+    info "本地构建镜像（构建期间线上仍是旧版本）"
+    $DC build app || die "构建失败，线上未改动"
+  else
+    info "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}"
+    if ! $DC pull app; then
+      die "拉取失败：检查 .env 里的 IMAGE_REPO、镜像是否已推送、私有仓库是否已 docker login"
     fi
-  fi
-
-  # 把当前线上镜像打上 previous 标签，方便回滚
-  if docker image inspect "${IMAGE}:latest" >/dev/null 2>&1; then
-    docker tag "${IMAGE}:latest" "${IMAGE}:previous"
-    info "已把当前版本标记为 previous（可用于 rollback）"
-  fi
-
-  info "构建新镜像（构建期间线上仍是旧版本）"
-  if ! $DC build app; then
-    die "构建失败，线上未改动"
   fi
 
   info "替换应用容器"
@@ -184,32 +212,35 @@ cmd_update() {
 
   info "等待新版本健康（最多 120 秒）"
   if wait_healthy "$APP_NAME" 120; then
-    ok "更新完成"
+    ok "更新完成：${IMAGE_REPO}:${IMAGE_TAG}"
     $DC ps
-  else
-    warn "新版本没起来，自动回滚"
-    if docker image inspect "${IMAGE}:previous" >/dev/null 2>&1; then
-      docker tag "${IMAGE}:previous" "${IMAGE}:latest"
-      $DC up -d --no-deps app
-      if wait_healthy "$APP_NAME" 120; then
-        ok "已回滚到上一个版本"
-      else
-        die "回滚也失败了，请手动检查：$DC logs --tail 80 app"
-      fi
-    fi
-    die "更新失败（已回滚）"
+    return 0
   fi
+
+  warn "新版本没起来，尝试回滚"
+  if [ -n "$rollback_id" ]; then
+    docker tag "$rollback_id" "${IMAGE_REPO}:${IMAGE_TAG}" >/dev/null 2>&1 || true
+    $DC up -d --no-deps app
+    if wait_healthy "$APP_NAME" 120; then
+      ok "已回滚到上一个镜像"
+      return 0
+    fi
+  fi
+  die "更新失败，看日志：$DC logs --tail 80 app"
 }
 
 # ---------- 回滚 ----------
+# 依据：本地 previous 标签（--build 模式）或上次更新的镜像 ID（pull 模式）
 cmd_rollback() {
   need_docker
-  docker image inspect "${IMAGE}:previous" >/dev/null 2>&1 \
-    || die "没有 previous 镜像可回滚（只保留最近一个版本）"
-  info "把 previous 提升为 latest 并重启"
-  docker tag "${IMAGE}:previous" "${IMAGE}:latest"
+  if ! docker image inspect "${IMAGE_REPO}:previous" >/dev/null 2>&1; then
+    die "没有 previous 镜像可回滚（--build 模式才会留 previous 标签）；
+        pull 模式下想回退到某个提交：把 .env 的 IMAGE_TAG 改成 sha-xxxxxxx 再 bash blog.sh update"
+  fi
+  info "把 previous 提升为当前 tag 并重启"
+  docker tag "${IMAGE_REPO}:previous" "${IMAGE_REPO}:${IMAGE_TAG}"
   $DC up -d --no-deps app
-  wait_healthy "$APP_NAME" 120 && ok "回滚完成" || die "回滚后仍不健康，看日志：$DC logs --tail 80 app"
+  wait_healthy "$APP_NAME" 120 && ok "回滚完成" || die "回滚后仍不健康：$DC logs --tail 80 app"
 }
 
 # ---------- 重置站长密码 ----------
@@ -259,9 +290,10 @@ usage() {
   cat <<'EOF'
 用法：bash blog.sh <命令>
 
-  install          首次安装：生成 .env、构建、启动、等健康
-  update [--pull]  更新：构建新镜像 → 健康检查 → 切换（失败自动回滚）
-                   加 --pull 会先 git 拉取最新代码
+  install          首次安装：生成 .env、拉镜像（或本地构建）、启动、等健康
+  update [选项]     更新：拉 CI 推送的新镜像 → 健康检查 → 切换（失败自动回滚）
+                     --build  改为本地构建（改了代码还没走 CI 时用）
+                     --pull   顺便 git 拉一下最新代码
   rollback         回滚到上一个版本
   passwd <新密码>   重置站长密码
   backup           备份数据库 + 上传文件

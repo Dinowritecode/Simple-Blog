@@ -10,9 +10,10 @@
 // 这样在同一浏览器里切到前台立刻就能看到新背景，不用刷新。
 // ============================================================
 
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api } from '../../api'
 import { useToast } from '../../composables/useToast'
+import ImageCropper from './ImageCropper.vue'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -31,6 +32,17 @@ const saving = ref(false)
 const uploading = ref(false)
 const fileInput = ref(null)
 
+// ---------- 裁剪 ----------
+// 背景图在页面上是「整屏铺满」的（hero 高度 = 100svh - 8px），
+// 所以裁剪框直接用当前窗口的宽高比 —— 后台裁成什么样，前台就是什么样。
+const cropOpen = ref(false)
+const pendingFile = ref(null)
+const bgAspect = computed(() => {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 1440
+  const h = typeof window !== 'undefined' ? window.innerHeight : 900
+  return Math.min(2.4, Math.max(1, w / Math.max(h, 1)))
+})
+
 // 外部（例如重新拉设置）改了 current，输入框跟着走
 watch(
   () => props.current,
@@ -43,15 +55,24 @@ function pickFile() {
   fileInput.value && fileInput.value.click()
 }
 
-async function onFile(e) {
+function onFile(e) {
   const f = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!f) return
   if (!/^image\//.test(f.type)) return toast.error('请选择图片文件')
+  // 先裁剪，裁剪确认后才真正上传
+  pendingFile.value = f
+  cropOpen.value = true
+}
+
+async function onCropped(file) {
+  cropOpen.value = false
+  pendingFile.value = null
   uploading.value = true
   try {
-    const d = await api.uploadImage(f) // 上传后得到站内 /uploads/xxx 地址
+    const d = await api.uploadImage(file) // 上传后得到站内 /uploads/xxx 地址
     input.value = d.url
+    toast.success('已上传，记得点「应用背景」')
   } catch (err) {
     toast.error(err.message)
   } finally {
@@ -118,6 +139,18 @@ function clear() {
         {{ current ? `当前已应用：${current}` : '当前未设置背景图' }}
       </p>
     </div>
+
+    <!-- 选图后先裁剪：比例取当前窗口，和前台整屏铺满的效果一致 -->
+    <ImageCropper
+      :open="cropOpen"
+      :file="pendingFile"
+      :aspect="bgAspect"
+      :out-width="1920"
+      title="裁剪背景图"
+      :note="`裁剪框比例 ${bgAspect.toFixed(2)} : 1 取自你当前窗口的宽高比 —— 前台背景是整屏铺满的，按这个比例裁，放上去就是现在看到的效果。`"
+      @done="onCropped"
+      @close="cropOpen = false; pendingFile = null"
+    />
   </div>
 </template>
 

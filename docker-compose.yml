@@ -50,10 +50,12 @@ services:
 
   # ---------- 博客本体 ----------
   app:
+    # 服务器上直接拉 CI 构建好的镜像（.env 里配 IMAGE_REPO）
+    # 本地想自己构建：docker compose build app
+    image: ${IMAGE_REPO:-dinowritecode/simple-blog}:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-    image: rin-eyce/blog:latest
     container_name: blog-app
     restart: unless-stopped
     depends_on:

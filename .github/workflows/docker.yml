@@ -1,0 +1,79 @@
+name: build-and-push
+
+# 触发：推 main、打 tag、或在 Actions 页面手动点一次
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  # 镜像名（不含 tag）。改成你的 Docker Hub 用户名/仓库名
+  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/simple-blog
+  # 阿里云 ACR：形如 registry.cn-chengdu.aliyuncs.com
+  ALIYUN_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
+  ALIYUN_IMAGE: ${{ secrets.ALIYUN_REGISTRY }}/${{ secrets.ALIYUN_NAMESPACE }}/simple-blog
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取出源码
+        uses: actions/checkout@v4
+
+      - name: 准备 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---------- 登录（没配对应 secret 就自动跳过） ----------
+      - name: 登录 Docker Hub
+        if: ${{ env.DOCKERHUB_IMAGE != '/' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 登录阿里云 ACR
+        if: ${{ env.ALIYUN_REGISTRY != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
+      # ---------- 标签 ----------
+      # latest       : 分支/主线构建
+      # sha-<短哈希>  : 每个提交都能定位，回滚时直接指定
+      # v1.2.3       : 打 tag 时
+      - name: 计算标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.DOCKERHUB_IMAGE }}
+            ${{ env.ALIYUN_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-
+            type=ref,event=tag
+
+      # ---------- 构建并推送 ----------
+      - name: 构建并推送镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # 服务器是 x86 云主机；要跑 ARM（如树莓派/华为鲲鹏）就打开 arm64
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 复用上一轮的层缓存，第二次起构建通常十几秒
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 输出摘要
+        run: |
+          echo "### 镜像已推送 🎉" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

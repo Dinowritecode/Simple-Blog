@@ -99,24 +99,43 @@ function onKeydown(e) {
 //                · 到顶部之后 → 换成与内容块完全相同的奶白色磨砂
 const onImage = ref(false)
 const glassAtTop = ref(false)
+// 当前滚动位置：首屏判定直接用它，比测量 hero 更稳
+const scrollY = ref(0)
+
+function onScroll() {
+  scrollY.value = window.scrollY || window.pageYOffset || 0
+  measureGlass()
+}
 
 // 文章详情页：封面从导航栏底下开始，所以导航栏先是一段「压在图上」的透明玻璃，
 // 滚过封面之后再换成实底玻璃 —— 与首页同一套材质、同一套切换逻辑。
 const isPostRoute = computed(() => /^\/blog\/[^/]+$/.test(route.path))
 
 const solid = computed(() => {
-  if (route.path === '/') return !!homeBg.value && glassAtTop.value
+  // 首页：必须「已滚过首屏」且「不在页面顶部」才切实底。
+  // 后半个条件是为了杜绝开页瞬间的白底板：首屏挂载/背景图加载的时机不稳，
+  // glassAtTop 偶发误判成 true 时会闪一条实底白带，加了它就不会。
+  if (route.path === '/') return !!homeBg.value && glassAtTop.value && !navClear.value
   if (isPostRoute.value) return glassAtTop.value
   return false
 })
 
+// 首页页面顶部（前 120px）：只用于「压制实底」，本身不带任何视觉样式 ——
+// 首屏要的是透过图片的毛玻璃，而不是一块透明板。
+const navClear = computed(
+  () => route.path === '/' && !!homeBg.value && scrollY.value < 120
+)
+
 function measureGlass() {
-  // 首页：hero（压在背景图上的首屏）是否已经滚出视口
-  const hero = document.querySelector('.hero.has-bg') // 只有配置了背景图才会有这个类
-  if (hero) {
-    const atTop = hero.getBoundingClientRect().bottom <= 0
+  // 首页：hero（压在背景图上的首屏）是否已经滚出视口。
+  // 这里用 .hero 而不是 .hero.has-bg —— 后者要等背景图 onload 后才出现，
+  // 那之前会落到下面「其它页面」分支，被误判成白底导航。
+  const heroWithBg = document.querySelector('.hero.has-bg')
+  const heroAny = heroWithBg || document.querySelector('.hero')
+  if (heroAny) {
+    const atTop = heroAny.getBoundingClientRect().bottom <= 0
     glassAtTop.value = atTop
-    onImage.value = !atTop
+    onImage.value = !!heroWithBg && !atTop
     return
   }
 
@@ -135,18 +154,27 @@ function measureGlass() {
 }
 
 onMounted(() => {
-  window.addEventListener('scroll', measureGlass, { passive: true })
+  window.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', measureGlass)
   window.addEventListener('keydown', onKeydown)
+  scrollY.value = window.scrollY || window.pageYOffset || 0
   nextTick(measureGlass)
+  // 首屏的 hero / 背景图样式是异步挂上的：NavBar 先挂载时可能还查不到 .hero.has-bg，
+  // 于是被误判成「其它页面」而套上实底玻璃（白底）。
+  // 多补测两次（下一帧 + 400ms 后），滚动/缩放仍会兜底。
+  requestAnimationFrame(measureGlass)
+  setTimeout(measureGlass, 400)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', measureGlass)
+  window.removeEventListener('scroll', onScroll)
   window.removeEventListener('resize', measureGlass)
   window.removeEventListener('keydown', onKeydown)
 })
 // 路由切换、或背景图异步加载完成（.has-bg 出现）后重新判定一次
-watch(() => route.fullPath, () => nextTick(measureGlass))
+watch(() => route.fullPath, () => {
+  scrollY.value = window.scrollY || window.pageYOffset || 0
+  nextTick(measureGlass)
+})
 watch(homeBg, () => nextTick(measureGlass))
 </script>
 

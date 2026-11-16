@@ -1,9 +1,10 @@
-﻿<script setup>
+<script setup>
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import { api } from '../api'
+import ImageCropper from '../components/admin/ImageCropper.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -77,17 +78,38 @@ onMounted(loadPost)
 // 从编辑页切换文章时重新加载
 watch(postId, () => loadPost())
 
-/* ---------- 封面图片上传 ---------- */
+/* ---------- 封面图片上传（先裁剪再上传） ---------- */
 const coverInput = ref(null)
 const uploadingCover = ref(false)
+const cropOpen = ref(false)
+const pendingCover = ref(null)
+
+// 文章封面在详情页是通栏 banner：
+//   min-height = clamp(300px, 36vh, 480px) + --nav-h(56px)
+// 宽 = 视口宽。所以裁剪比例直接用「视口宽 / banner 高」，
+// 后台裁出来的画面和详情页顶部看到的一模一样。
+const coverAspect = computed(() => {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 1440
+  const h = typeof window !== 'undefined' ? window.innerHeight : 900
+  const banner = Math.min(480, Math.max(300, h * 0.36)) + 56
+  return Math.min(3.2, Math.max(1.4, w / Math.max(banner, 1)))
+})
 
 function pickCover() {
   coverInput.value?.click()
 }
 
-async function onCoverChange(e) {
+function onCoverChange(e) {
   const file = e.target.files?.[0]
+  e.target.value = ''
   if (!file) return
+  pendingCover.value = file
+  cropOpen.value = true
+}
+
+async function onCoverCropped(file) {
+  cropOpen.value = false
+  pendingCover.value = null
   uploadingCover.value = true
   try {
     const res = await api.uploadImage(file)
@@ -96,7 +118,6 @@ async function onCoverChange(e) {
     alert(err.message)
   } finally {
     uploadingCover.value = false
-    e.target.value = ''
   }
 }
 
@@ -201,6 +222,18 @@ onBeforeUnmount(() => {
           <button v-if="form.cover" class="btn btn-ghost" type="button" @click="form.cover = ''">移除</button>
           <input ref="coverInput" type="file" accept="image/*" hidden @change="onCoverChange" />
         </div>
+
+        <!-- 选图后先裁剪：比例 = 详情页 banner 的实际宽高比 -->
+        <ImageCropper
+          :open="cropOpen"
+          :file="pendingCover"
+          :aspect="coverAspect"
+          :out-width="1920"
+          title="裁剪文章封面"
+          :note="`裁剪框比例 ${coverAspect.toFixed(2)} : 1 与文章详情页顶部 banner 一致；文章卡片里的缩略图会按这个比例居中裁切。`"
+          @done="onCoverCropped"
+          @close="cropOpen = false; pendingCover = null"
+        />
       </div>
 
       <div class="field">

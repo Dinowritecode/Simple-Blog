@@ -1,5 +1,5 @@
-﻿<script setup>
-// 后台：用户管理（列表 + 搜索 + 删除；管理员账号与自身不可删）
+<script setup>
+// 后台：用户管理（列表 + 搜索 + 删除；站长账号与自身不可删）
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import { useAuth } from '../composables/useAuth'
@@ -96,7 +96,7 @@ function next() { if (page.value < totalPages()) { page.value++; load() } }
             </td>
             <td class="td-email">{{ u.email }}</td>
             <td>
-              <span class="badge" :class="u.role">{{ u.role === 'admin' ? '管理员' : '用户' }}</span>
+              <span class="badge" :class="u.role">{{ u.role === 'admin' ? '站长' : '用户' }}</span>
             </td>
             <td class="td-num">{{ u.commentCount }}</td>
             <td class="td-date">{{ formatDate(u.createdAt) }}</td>

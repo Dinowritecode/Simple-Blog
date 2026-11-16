@@ -26,9 +26,9 @@ async function submit() {
   try {
     const data = await login(account.value.trim(), password.value)
     if (!isAdmin.value) {
-      // 登录成功但不是管理员：清除登录态并提示（普通用户请走前台登录）
+      // 登录成功但不是站长：清除登录态并提示（普通用户请走前台登录）
       logout()
-      error.value = '该账号不是站长（管理员），普通用户请从右上角登录'
+      error.value = '该账号不是站长，普通用户请从右上角登录'
       return
     }
     toast.success(`站长你好，${data.user.nickname || data.user.username || 'admin'}！`)
