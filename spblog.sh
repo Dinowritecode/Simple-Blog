@@ -47,6 +47,30 @@ ok()   { printf '%s\n' "${C_OK}✔${C_END} $*"; }
 warn() { printf '%s\n' "${C_WARN}!${C_END} $*"; }
 die()  { printf '%s\n' "${C_ERR}✘${C_END} $*" >&2; exit 1; }
 
+# ---------- 启动字符画 ----------
+# 用 base64(gzip(ANSI)) 内嵌：脚本仍是纯文本，不怕编码/换行被破坏，体积也只有 1.2 KB。
+# 终端太窄（<190 列）时自动换成小横幅，避免 240 列的画面被折成乱码。
+# 强制显示大图：SPBLOG_BANNER=always   完全关闭：SPBLOG_NO_BANNER=1
+BANNER_B64='H4sICC3p+2oCA2xvZ29fYW5zaS50eHQA3VlLiuQwDN3PFXpT4KXAzIeGQY3BN/AB5gyDFro/jB07sexISbq7FukRFISK41jP0tOT83h8TXv58+v328+3H7/ffpSL1+9//cuf73+//Tfe4C3cURbm/funQbjL5mhII77LJeA7RZriUMjm+62fr6/rLzsbmmWn/cUJ7+XwQ/cM9+tO0cWoDE2w+I8FC2gWRAwokCa6FwTa1lJ04JXFI6TEwZ8jGICZZeTcGAENgLzf3txCBEoEMwwGDrB/nl3yt0fARTjjBk5uB0NwKSjTlbzA28c95o0557C8/c7lNMA6ICdLfUpDMefB3fzWHaerBYFTjCk7hSJFjPrADP4L0L2nhJcrYuBcCGJ0eI4pJ7ihkFRWGoj8dU3AsdTCnPn+wrzhjkpa3SwKFzOAYmHGnAjkIjGexBYkvmk3odIVM17AIMuDDa1MceQGUaBFQiK8bU9lADEUNk3FxLlY+CoM0J4XIt27t1RTA470bIpkNWrUOEItOA6/SpOt7j0d9HlF9WV1oLmda+bObUVhZGUV91aB9rzY5/0K9R3hA91BbDVQWXrRjbqizk9kMqzTsnDI7j2VeVycO0h1e1SreqXdhU/jh+7KRIoPDb+k45epVU2YIQigziCDcClM6iHLCJiiadrcbrImi3IZz/aEgKvA87vxqs4Wba7h1f8e8NpiYNmfUK9HzlGj92iJuGQetKMb3WDjf9zfC0P4p62CjoPwQKev4lPZaGe2IShCxw9Rm98N6uLnO4sN8Jl5R4d8U5UzR9uqG6gxYMQe/HWioOR6sHvadlvLATrJ14XxG/ct6GVtZy1euxPpGL2VFaaQQUk2VXaFA/AqyekMuNzqIbQ6cxE9WmNWOdXTOR9zBJHMKOrxoW/vsizS1y7QU7bPggME5Yc5CrGvTZI5jXUxdFzkqFQ3pGW0TDEFCl43QAHPoU16BfEmvwTlr8Hgx0rE29rXMts8PwHPOwO80NHgmTvqzEM16pedQPvT7WHq6c/YjLprNv3jB7Bb+xQZ9K4Tidi5khsw0VfL9ZOa0c/Bi62ZTz1yKiUI4qjX9e/Q474usgtL7knLfSIwM9skfh06o26Wk7rmQ5r3nCbB06IL11FpWvvhOa/FgJKl/KwVqW8e9g3G6e3QJxJZE8wYN2uFKjmAvK1VeJc5MuAfc2xt+KY1gM6RU49kpvAOc/hB/1uwoW954auhAC70grtiMZl5dG4xXW9atCOC2CHiGTghdHmiurn+NuCUEgGTMafdZsFjCr56zY9pCJnVy88lIhJIgqjqzoqc8mFgf+IU1JOl6kTa4eZE0Uow8hJbmmltxxVNbOo0nAhfxp4khF15UDWTEI8+WtrPChw93vxB9xUFbmEXB7P1zO3x39LIws1oQlOYS+Ygm0mokx6GjetI2Pr9QaSsLqvhoJVIyqdOz/6wnypvq6eEQyetsKsjnCArHNMSeIFNeTvsrHxg3bTY8k/t4+vNrVlZe5c6BIX4UZuRPtFycjezg6WCy7igJSmYw+evwigWvnv1NkytVk//em42ceGTE/vwhGUpzdsQX88/Wtc++BT7NBz49I82u7OFex6oaidSX2Whyzr/ARDJgv3XJgAA'
+
+show_banner() {
+  [ "${SPBLOG_NO_BANNER:-0}" = "1" ] && return 0
+  local cols="${COLUMNS:-}"
+  [ -n "$cols" ] || cols="$(tput cols 2>/dev/null || echo 0)"
+  case "$cols" in ''|*[!0-9]*) cols=0 ;; esac
+
+  if [ "${SPBLOG_BANNER:-auto}" = "always" ] || [ "$cols" -eq 0 ] || [ "$cols" -ge 190 ]; then
+    printf '%s' "$BANNER_B64" | base64 -d | gzip -dc
+  else
+    printf '\n'
+    printf '  ─────────────────────────────────────\n'
+    printf '   spblog · 凛冬 RinEyce\n'
+    printf '   一行部署 / 一行更新\n'
+    printf '  ─────────────────────────────────────\n'
+  fi
+  printf '\n'
+}
+
 # ---------- 依赖 ----------
 need_docker() {
   command -v docker >/dev/null 2>&1 || die "没装 Docker，先执行：curl -fsSL https://get.docker.com | bash"
@@ -270,6 +294,7 @@ preflight_port() {
 
 # ---------- 安装 ----------
 cmd_install() {
+  show_banner
   need_docker
   info "spblog v${SPBLOG_VERSION}"
   resolve_image
@@ -409,6 +434,7 @@ cmd_down() {
 }
 
 usage() {
+  show_banner
   cat <<'EOF'
 用法：spblog <命令>
 
