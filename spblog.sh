@@ -26,7 +26,7 @@ trap 'code=$?; [ "$code" = "0" ] || printf "\n✘ 脚本在第 %s 行失败（�
 
 # ---------- 版本 ----------
 # 改脚本时记得更新它：服务器上 `spblog version` 一眼就能看出「下载到的到底是不是新版」
-SPBLOG_VERSION="2026-11-17.2"
+SPBLOG_VERSION="2026-11-17.3"
 
 # ---------- 可配置项 ----------
 ROOT="${BLOG_DIR:-/opt/blog}"                 # 站点目录（只放 compose 文件）
@@ -69,6 +69,57 @@ show_banner() {
     printf '  ─────────────────────────────────────\n'
   fi
   printf '\n'
+}
+
+# ---------- 自更新 ----------
+# `spblog update` 只换容器镜像，**脚本本身不会跟着变** —— 脚本是服务器上的一个文件，
+# 不在镜像里。所以这里加一步：执行 install / update 前先看看远端脚本的版本号，
+# 不一致就把自己替换掉并重新执行（exec），这样以后改脚本只要 push，服务器不用手动下载。
+#
+# 关掉：SPBLOG_NO_SELF_UPDATE=1    换下载源：SPBLOG_URL=https://…
+SPBLOG_SELF_URL="${SPBLOG_URL:-https://raw.githubusercontent.com/Dinowritecode/Simple-Blog/main/spblog.sh}"
+SPBLOG_MIRROR="https://ghfast.top/"
+
+self_update() {
+  [ "${SPBLOG_NO_SELF_UPDATE:-0}" = "1" ] && return 0
+  # 只对「磁盘上的一个真实文件」做自更新；curl | bash 时 $0 是 bash，不能覆盖
+  [ -f "$0" ] && [ -w "$0" ] || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+
+  local tmp newver self
+  tmp="$(mktemp 2>/dev/null || echo "/tmp/spblog.$$")"
+
+  if ! curl -fsSL --connect-timeout 4 --max-time 10 "$SPBLOG_SELF_URL" -o "$tmp" 2>/dev/null; then
+    # 直连不通（国内访问 raw.githubusercontent 经常超时）就走镜像再试一次
+    if ! curl -fsSL --connect-timeout 4 --max-time 14 "${SPBLOG_MIRROR}${SPBLOG_SELF_URL}" -o "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      return 0   # 拿不到就算了，不影响本次部署
+    fi
+  fi
+
+  newver="$(sed -n 's/^SPBLOG_VERSION="\(.*\)"/\1/p' "$tmp" | head -1)"
+  if [ -z "$newver" ]; then
+    rm -f "$tmp"
+    return 0   # 下载到的不是脚本（镜像返回了错误页之类），忽略
+  fi
+  if [ "$newver" = "$SPBLOG_VERSION" ]; then
+    rm -f "$tmp"
+    return 0   # 已经是最新
+  fi
+
+  self="$0"
+  info "发现脚本新版本：$SPBLOG_VERSION → $newver"
+  cp "$self" "${self}.bak" 2>/dev/null || true
+  if cat "$tmp" > "$self" 2>/dev/null; then
+    chmod +x "$self" 2>/dev/null || true
+    rm -f "$tmp"
+    ok "脚本已更新（旧版备份在 ${self}.bak），重新执行 spblog $*"
+    printf '\n'
+    exec "$self" "$@"
+  fi
+  rm -f "$tmp"
+  warn "脚本无法写入（$self），跳过自更新；请手动下载覆盖"
+  return 0
 }
 
 # ---------- 依赖 ----------
@@ -294,6 +345,7 @@ preflight_port() {
 
 # ---------- 安装 ----------
 cmd_install() {
+  self_update install
   show_banner
   need_docker
   info "spblog v${SPBLOG_VERSION}"
@@ -340,6 +392,7 @@ cmd_install() {
 
 # ---------- 更新 ----------
 cmd_update() {
+  self_update update
   need_docker
   load_secrets
   resolve_image
@@ -446,6 +499,7 @@ print_commands() {
   backup           备份数据库 + 上传文件
   status / logs / restart / down
   version          显示脚本版本
+  upgrade          只更新脚本本身（不动容器）
   help             帮助（不带字符画）
 
 EOF
@@ -459,6 +513,13 @@ usage() {
 # help：只打命令列表，不打字符画 —— 终端窄、日志里、复制粘贴时更好用
 cmd_help() {
   print_commands
+}
+
+# 只检查并更新脚本本身（不动容器）
+cmd_upgrade() {
+  info "当前版本：spblog ${SPBLOG_VERSION}"
+  self_update upgrade
+  ok "已是最新版本：spblog ${SPBLOG_VERSION}"
 }
 
 # ---------- 参数 ----------
@@ -484,6 +545,7 @@ case "$CMD" in
   status)   cmd_status ;;
   version)  printf 'spblog %s\n' "$SPBLOG_VERSION" ;;
   help|-h|--help) cmd_help ;;
+  upgrade)  cmd_upgrade ;;
   logs)     cmd_logs ;;
   restart)  cmd_restart ;;
   down)     cmd_down ;;
