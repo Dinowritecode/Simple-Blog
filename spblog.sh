@@ -433,29 +433,32 @@ cmd_down() {
   $DC down; ok "已停止（数据卷保留）"
 }
 
-usage() {
-  show_banner
+# 命令列表：usage() 与 help 共用一份文案，改一处两边都生效
+print_commands() {
   cat <<'EOF'
-用法：spblog <命令>
+常见命令
 
-  install          首次部署：生成密码 → 拉镜像 → 启动（不需要 .env、不需要源码）
-  update           更新：拉新镜像 → 健康检查 → 切换（失败自动回滚）
-                     --tag sha-xxxxxxx  切到指定版本（可用于回退）
+  install          首次部署/启动
+  update           拉取最新版本
+                     --tag sha-xxxxxxx  回退到指定版本
   rollback         回滚到上一个镜像
-  passwd <新密码>   重置站长密码
+  passwd <new_password>   重置站长密码
   backup           备份数据库 + 上传文件
   status / logs / restart / down
+  version          显示脚本版本
+  help             帮助（不带字符画）
 
-可覆盖的环境变量：
-  BLOG_DIR=/opt/blog        站点目录
-  IMAGE_REPO=xxx/yyy        镜像仓库（默认阿里云 ACR: rineyce/spblog）
-  IMAGE_TAG=latest          镜像标签（也可填 sha-xxxxxxx 回退到某次提交）
-  APP_PORT=127.0.0.1:8080   端口绑定
-  ACR_USER / ACR_PASSWORD   私有仓库账号（给了就自动 docker login）
-
-一行部署示例：
-  curl -fsSL <脚本地址> -o /usr/local/bin/spblog && chmod +x /usr/local/bin/spblog && spblog install
 EOF
+}
+
+usage() {
+  show_banner
+  print_commands
+}
+
+# help：只打命令列表，不打字符画 —— 终端窄、日志里、复制粘贴时更好用
+cmd_help() {
+  print_commands
 }
 
 # ---------- 参数 ----------
@@ -480,6 +483,7 @@ case "$CMD" in
   backup)   cmd_backup ;;
   status)   cmd_status ;;
   version)  printf 'spblog %s\n' "$SPBLOG_VERSION" ;;
+  help|-h|--help) cmd_help ;;
   logs)     cmd_logs ;;
   restart)  cmd_restart ;;
   down)     cmd_down ;;
