@@ -21,7 +21,17 @@ import (
 )
 
 // settingsPublicKeys 对公众开放的设置键（避免把内部设置泄露出去）。
-var settingsPublicKeys = map[string]bool{"home_bg": true, "post_bg": true, "notice": true}
+var settingsPublicKeys = map[string]bool{
+	"home_bg": true,
+	"post_bg": true,
+	"notice":  true,
+	// 首页文案与登录页背景（后台「设置 → 首页文案」里改）
+	"hero_nickname": true,
+	"hero_desc":     true,
+	"hero_roles":    true,
+	"hero_avatar":   true,
+	"login_bg":      true,
+}
 
 // ---------- 背景图：首页 / 文章页各一张 ----------
 // 两个键完全独立：后台可以只改其中一个，另一个保持不动。
@@ -238,6 +248,16 @@ func publicKeyJSON(key string) string {
 		return "postBg"
 	case "notice":
 		return "notice"
+	case "hero_nickname":
+		return "heroNickname"
+	case "hero_desc":
+		return "heroDesc"
+	case "hero_roles":
+		return "heroRoles"
+	case "hero_avatar":
+		return "heroAvatar"
+	case "login_bg":
+		return "loginBg"
 	}
 	return key
 }

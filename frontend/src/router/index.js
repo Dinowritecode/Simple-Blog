@@ -12,9 +12,9 @@ const routes = [
   // 站内搜索：?q=关键字&type=all|post|category|tag|user
   { path: '/search', name: 'search', component: () => import('../views/SearchView.vue') },
 
-  // 访客：登录 / 注册（右上角按钮进入，用于评论互动）
-  { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { hideChrome: true, guestOnly: true } },
-  { path: '/register', name: 'register', component: () => import('../views/RegisterView.vue'), meta: { hideChrome: true, guestOnly: true } },
+  // 访客：登录 / 注册共用同一个页面（左右分栏 + 横向滑动切换，见 AuthView.vue）
+  { path: '/login', name: 'login', component: () => import('../views/AuthView.vue'), meta: { hideChrome: true, guestOnly: true } },
+  { path: '/register', name: 'register', component: () => import('../views/AuthView.vue'), meta: { hideChrome: true, guestOnly: true } },
 
   // 站长：独立后台登录页（仅登录，无注册 —— 站长账号部署时自动创建）
   { path: '/admin/login', name: 'admin-login', component: () => import('../views/AdminLoginView.vue'), meta: { hideChrome: true } },

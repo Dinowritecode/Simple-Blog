@@ -10,8 +10,8 @@ import {
 import AdminBgCard from '../components/admin/AdminBgCard.vue'
 
 const { toast } = useToast()
-// 直接改 useSite 里的值：保存背景图后切到前台立刻生效，不用刷新
-const { homeBg, postBg } = useSite()
+// 直接改 useSite 里的值：保存后切到前台立刻生效，不用刷新
+const { homeBg, postBg, heroNickname, heroDesc, heroRoles, heroAvatar, loginBg } = useSite()
 
 // ---------- 背景图（首页 / 文章页各一张，交给 AdminBgCard 渲染） ----------
 const currentBg = ref('') // 首页已保存的地址
@@ -26,6 +26,86 @@ function onPostBgSaved(v) {
   postBg.value = v
 }
 const loading = ref(true)
+
+// ---------- 首页文案（昵称 / 打字动画 / 介绍 / 首屏头像） ----------
+// 与后端 settings_content.go 的上限保持一致
+const NICKNAME_MAX = 40
+const DESC_MAX = 300
+const ROLE_MAX = 40
+const ROLE_LINES_MAX = 10
+
+const heroNicknameInput = ref('')
+const heroDescInput = ref('')
+const heroRolesInput = ref('')
+const heroAvatarInput = ref('')
+const savingHero = ref(false)
+const uploadingHeroAvatar = ref(false)
+const heroAvatarFile = ref(null)
+
+async function pickHeroAvatar() {
+  heroAvatarFile.value && heroAvatarFile.value.click()
+}
+async function onHeroAvatarFile(e) {
+  const f = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!f) return
+  if (!/^image\//.test(f.type)) return toast.error('请选择图片文件')
+  uploadingHeroAvatar.value = true
+  try {
+    const d = await api.uploadImage(f)
+    heroAvatarInput.value = d.url
+    toast.success('头像已上传，记得点「保存文案」')
+  } catch (err) {
+    toast.error(err.message)
+  } finally {
+    uploadingHeroAvatar.value = false
+  }
+}
+
+async function saveHero() {
+  const nickname = heroNicknameInput.value.trim()
+  if ([...nickname].length > NICKNAME_MAX) return toast.error(`昵称最多 ${NICKNAME_MAX} 字`)
+  if ([...heroDescInput.value.trim()].length > DESC_MAX) return toast.error(`介绍最多 ${DESC_MAX} 字`)
+  const roleLines = heroRolesInput.value.split('\n').map((s) => s.trim()).filter(Boolean)
+  if (roleLines.length > ROLE_LINES_MAX) return toast.error(`打字动画最多 ${ROLE_LINES_MAX} 行`)
+  if (roleLines.some((l) => [...l].length > ROLE_MAX)) return toast.error(`每行最多 ${ROLE_MAX} 字`)
+
+  savingHero.value = true
+  try {
+    const d = await api.saveContent({
+      nickname,
+      desc: heroDescInput.value.trim(),
+      roles: heroRolesInput.value,
+      avatar: heroAvatarInput.value.trim()
+    })
+    heroNickname.value = d.nickname
+    heroDesc.value = d.desc
+    heroRoles.value = d.roles
+    heroAvatar.value = d.avatar
+    heroNicknameInput.value = d.nickname
+    heroDescInput.value = d.desc
+    heroRolesInput.value = d.roles
+    heroAvatarInput.value = d.avatar
+    toast.success('首页文案已更新，去首页看看吧')
+  } catch (err) {
+    toast.error(err.message)
+  } finally {
+    savingHero.value = false
+  }
+}
+
+// ---------- 登录页背景图（与首页背景完全独立） ----------
+const loginBgCurrent = ref('')
+async function saveLoginBg(url) {
+  const d = await api.saveContent({ loginBg: url })
+  loginBgCurrent.value = d.loginBg
+  loginBg.value = d.loginBg
+  return d
+}
+function onLoginBgSaved(v) {
+  loginBgCurrent.value = v
+  loginBg.value = v
+}
 
 // ---------- 首页公告 ----------
 const NOTICE_MAX = 300 // 与后端 noticeMaxRunes 保持一致
@@ -171,6 +251,12 @@ async function load() {
     const s = await api.getSettings()
     currentBg.value = s.homeBg || ''
     currentPostBg.value = s.postBg || ''
+    // 首页文案
+    heroNicknameInput.value = s.heroNickname || ''
+    heroDescInput.value = s.heroDesc || ''
+    heroRolesInput.value = s.heroRoles || ''
+    heroAvatarInput.value = s.heroAvatar || ''
+    loginBgCurrent.value = s.loginBg || ''
     currentNotice.value = s.notice || ''
     noticeInput.value = currentNotice.value
     currentPageSize.value = Number(s.pageSize) || 20
@@ -261,6 +347,68 @@ async function savePageSize() {
         :save-fn="api.savePostBg"
         empty-text="未设置背景（文章页用默认纯色网格背景）"
         @saved="onPostBgSaved"
+      />
+
+      <!-- 首页文案：昵称 / 打字动画 / 介绍 / 首屏头像 -->
+      <div class="settings-card">
+        <h2>✍️ 首页文案</h2>
+        <p class="settings-desc">
+          控制首页首屏的<strong>头像、昵称、打字动画和下方介绍</strong>。全部留空则使用内置默认文案。
+        </p>
+
+        <label class="m-field">
+          <span>昵称（用 <code>|</code> 分隔主题色部分，如：凛冬|RinEyce）</span>
+          <input
+            v-model="heroNicknameInput"
+            type="text"
+            :maxlength="NICKNAME_MAX"
+            placeholder="凛冬|RinEyce"
+          />
+        </label>
+
+        <label class="m-field">
+          <span>打字动画（一行一条，最多 {{ ROLE_LINES_MAX }} 行）</span>
+          <textarea
+            v-model="heroRolesInput"
+            rows="5"
+            placeholder="Rust Developer&#10;Go Developer&#10;C++ Developer"
+          ></textarea>
+        </label>
+
+        <label class="m-field">
+          <span>下方介绍（用 **文字** 表示高亮）</span>
+          <textarea
+            v-model="heroDescInput"
+            rows="4"
+            :maxlength="DESC_MAX"
+            placeholder="热爱底层、性能与优雅的代码。用 Rust 写**安全**、用 Go 写**并发**。"
+          ></textarea>
+        </label>
+
+        <label class="m-field">
+          <span>首屏头像 URL（留空用内置头像）</span>
+          <input v-model="heroAvatarInput" type="text" placeholder="/uploads/xxx.jpg 或 https://…" />
+        </label>
+        <div class="bg-buttons">
+          <input ref="heroAvatarFile" type="file" accept="image/*" hidden @change="onHeroAvatarFile" />
+          <button class="btn-sm ghost" :disabled="uploadingHeroAvatar" @click="pickHeroAvatar">
+            {{ uploadingHeroAvatar ? '上传中…' : '📁 上传头像' }}
+          </button>
+          <button class="btn-sm ghost" :disabled="!heroAvatarInput" @click="heroAvatarInput = ''">清除头像</button>
+          <button class="btn-sm" :disabled="savingHero" @click="saveHero">
+            {{ savingHero ? '保存中…' : '💾 保存文案' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 登录页背景图：与首页背景完全独立 -->
+      <AdminBgCard
+        title="🔐 登录页背景图"
+        desc="显示在<strong>登录页左半屏</strong>。与首页背景图<strong>互不影响</strong>；留空则左半屏用<strong>主题色渐变底板</strong>。建议竖版或接近 1:1 的图（如 1200×1400）。"
+        :current="loginBgCurrent"
+        :save-fn="saveLoginBg"
+        empty-text="未设置背景（登录页左半屏用主题色底板）"
+        @saved="onLoginBgSaved"
       />
 
       <!-- 首页公告：显示在首页毛玻璃区右侧的公告卡片里 -->

@@ -256,6 +256,7 @@ func main() {
 			admin.PUT("/settings/momotalk", handleAdminUpdateMomoTalk) // 功能开关：启用/关闭 Momo Talk
 			admin.PUT("/settings/font", handleAdminUpdateFont)         // 页面管理：全站字体
 			admin.PUT("/settings/clickfx", handleAdminUpdateClickFX)   // 页面管理：点击特效（ba-click-fx）参数
+			admin.PUT("/settings/content", handleAdminUpdateContent)   // 页面管理：首页文案 + 首屏头像 + 登录页背景
 
 			admin.GET("/backup/info", handleBackupInfo)      // 备份：当前数据概览（各表行数 / 文件数 / 体积）
 			admin.GET("/backup/export", handleBackupExport)  // 备份：流式下载 zip

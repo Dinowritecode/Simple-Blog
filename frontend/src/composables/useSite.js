@@ -42,6 +42,13 @@ export const DEFAULT_THEME = {
 
 const homeBg = ref('') // 首页背景图（后台「首页背景图」）
 const postBg = ref('') // 文章详情页背景图（后台「文章页背景图」，与首页各管各的）
+// 首页文案（后台「首页文案」里改）。空串 = 用组件内置的默认值，老库不用迁移。
+// heroNickname 用 | 分隔：前段走主题色，后段走正文色；没有 | 时整串走正文色。
+const heroNickname = ref('')
+const heroDesc = ref('')
+const heroRoles = ref('') // 一行一条，给打字动画用
+const heroAvatar = ref('') // 首屏头像 URL（空 = 内置头像）
+const loginBg = ref('') // 登录页左半屏背景（空 = 主题色底）
 const startedAt = ref(0) // 0 = 尚未取到（或后端版本较旧没返回该字段）
 const notice = ref('')
 const pageSize = ref(DEFAULT_PAGE_SIZE)
@@ -157,6 +164,11 @@ export function useSite() {
       .then((s) => {
         homeBg.value = s.homeBg || ''
         postBg.value = s.postBg || ''
+        heroNickname.value = s.heroNickname || ''
+        heroDesc.value = s.heroDesc || ''
+        heroRoles.value = s.heroRoles || ''
+        heroAvatar.value = s.heroAvatar || ''
+        loginBg.value = s.loginBg || ''
         startedAt.value = Number(s.startedAt) || 0
         notice.value = s.notice || ''
         pageSize.value = Number(s.pageSize) || DEFAULT_PAGE_SIZE
@@ -173,5 +185,21 @@ export function useSite() {
       .catch(() => { /* 读取失败时保持默认值（用样式表里的默认外观） */ })
       .finally(() => { ready.value = true })
   }
-  return { homeBg, postBg, startedAt, notice, pageSize, theme, momoTalkEnabled, siteFont, clickFx, ready }
+  return {
+    homeBg,
+    postBg,
+    heroNickname,
+    heroDesc,
+    heroRoles,
+    heroAvatar,
+    loginBg,
+    startedAt,
+    notice,
+    pageSize,
+    theme,
+    momoTalkEnabled,
+    siteFont,
+    clickFx,
+    ready
+  }
 }

@@ -19,7 +19,7 @@ import { useSite } from '../composables/useSite'
 
 // 首页背景图（来自 /api/settings，站长在后台「页面管理」配置）。
 // 抽到共享 composable：导航栏也要用它判断文字该用白色还是主题色。
-const { homeBg } = useSite()
+const { homeBg, heroNickname, heroDesc, heroRoles, heroAvatar } = useSite()
 
 // ---------- 背景图是否真的加载出来了 ----------
 // 背景图在远端（图床 / CDN / 站长自己填的地址），可能挂了、被墙了、或者只是慢。
@@ -71,8 +71,15 @@ onBeforeUnmount(() => {
     <!-- ① 固定背景图层：页面滚动时它纹丝不动（用「首页背景图」这张） -->
     <PageBackdrop :src="homeBg" />
 
-    <!-- ② 首屏文字：背景图由上层固定图层透出来 -->
-    <HeroSection :bg="homeBg" :bg-ok="bgOk" />
+    <!-- ② 首屏文字：背景图由上层固定图层透出来；文案/头像可在后台改 -->
+    <HeroSection
+      :bg="homeBg"
+      :bg-ok="bgOk"
+      :nickname="heroNickname"
+      :desc="heroDesc"
+      :roles="heroRoles"
+      :avatar="heroAvatar"
+    />
 
     <!-- ③ 毛玻璃区域：从下方滑上来盖住背景图。左栏名片、右栏公告+统计，正文居中 -->
     <div class="lower-wrap">

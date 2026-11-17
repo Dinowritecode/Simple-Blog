@@ -9,19 +9,62 @@ import photoUrl from '../others/photo.jpg'
 //   背景图是远端的，CDN 挂了 / 网络慢 / 被拦截时它不会出现，这时页面是浅色底。
 //   如果仍按「有背景图」把文字切成白色，就会变成白字白底——所以只有图片真的
 //   画出来了才切白色，否则退回浅底深字。
-defineProps({
+// nickname / desc / roles / avatar：后台「首页文案」里可改；留空则用下面的内置默认值
+const props = defineProps({
   bg: { type: String, default: '' },
-  bgOk: { type: Boolean, default: false }
+  bgOk: { type: Boolean, default: false },
+  nickname: { type: String, default: '' },
+  desc: { type: String, default: '' },
+  roles: { type: String, default: '' },
+  avatar: { type: String, default: '' }
 })
 
-const roles = [
+const DEFAULT_ROLES = [
   'Rust Developer',
   'Go Developer',
   'C++ Developer',
   'Systems Programmer',
   '性能强迫症患者'
 ]
-const { text: typed } = useTypewriter(roles)
+const DEFAULT_DESC = '热爱底层、性能与优雅的代码。用 Rust 写**安全**、用 Go 写**并发**、用 C++ 榨干每一分**性能**。'
+const DEFAULT_NICKNAME = '凛冬|RinEyce'
+
+// 昵称：后台用 | 分隔「主题色前半段」和「正文后半段」
+const nameParts = computed(() => {
+  const raw = (props.nickname || '').trim() || DEFAULT_NICKNAME
+  const i = raw.indexOf('|')
+  if (i < 0) return { pre: '', main: raw }
+  return { pre: raw.slice(0, i), main: raw.slice(i + 1) }
+})
+
+// 打字动画的候选词：一行一条；后台没配就用默认
+const roleList = computed(() => {
+  const arr = (props.roles || '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return arr.length ? arr : DEFAULT_ROLES
+})
+
+// 介绍：支持 **文字** 表示高亮（拆成若干段，避免用 v-html）
+const descSegments = computed(() => {
+  const raw = (props.desc || '').trim() || DEFAULT_DESC
+  const out = []
+  const re = /\*\*(.+?)\*\*/g
+  let last = 0
+  let m
+  while ((m = re.exec(raw))) {
+    if (m.index > last) out.push({ text: raw.slice(last, m.index), hl: false })
+    out.push({ text: m[1], hl: true })
+    last = m.index + m[0].length
+  }
+  if (last < raw.length) out.push({ text: raw.slice(last), hl: false })
+  return out
+})
+
+const avatarUrl = computed(() => props.avatar || photoUrl)
+
+const { text: typed } = useTypewriter(() => roleList.value)
 
 // ---------- 右侧的时钟 + 星期 ----------
 // 只画刻度和指针，不画表盘轮廓：这样它和旁边那行等宽小字是同一种「细线」气质。
@@ -53,8 +96,10 @@ const isDay = computed(() => {
     <div class="hero-inner" v-reveal>
       <!-- 头像和昵称同一行：头像当「字首」，标题跟它垂直居中 -->
       <div class="hero-title-row">
-        <img class="avatar" :src="photoUrl" alt="凛冬RinEyce 的头像" />
-        <h1 class="hero-name"><span class="accent">凛冬</span>RinEyce</h1>
+        <img class="avatar" :src="avatarUrl" :alt="`${nameParts.main} 的头像`" />
+        <h1 class="hero-name">
+          <span v-if="nameParts.pre" class="accent">{{ nameParts.pre }}</span>{{ nameParts.main }}
+        </h1>
       </div>
 
       <p class="hero-role">
@@ -63,7 +108,10 @@ const isDay = computed(() => {
       </p>
 
       <p class="hero-desc">
-        热爱底层、性能与优雅的代码。用 Rust 写<span class="nb">安全</span>、用 Go 写<span class="nb">并发</span>、用 C++ 榨干每一分<span class="nb">性能</span>。
+        <template v-for="(seg, i) in descSegments" :key="i">
+          <span v-if="seg.hl" class="nb">{{ seg.text }}</span>
+          <template v-else>{{ seg.text }}</template>
+        </template>
       </p>
 
       <div class="hero-actions">

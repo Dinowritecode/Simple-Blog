@@ -69,6 +69,9 @@ export const api = {
   // 页面管理：文章详情页背景图（与首页背景图是两个独立设置）
   savePostBg: (postBg) => request('/admin/settings/postbg', { method: 'PUT', body: JSON.stringify({ postBg }) }),
   saveNotice: (notice) => request('/admin/settings/notice', { method: 'PUT', body: JSON.stringify({ notice }) }),
+  // 页面管理：首页文案（昵称 / 介绍 / 打字动画）+ 首屏头像 + 登录页背景
+  // 参数是对象，只传要改的字段：{nickname, desc, roles, avatar, loginBg}
+  saveContent: (payload) => request('/admin/settings/content', { method: 'PUT', body: JSON.stringify(payload) }),
   savePageSize: (pageSize) => request('/admin/settings/pagesize', { method: 'PUT', body: JSON.stringify({ pageSize }) }),
   saveTheme: (theme) => request('/admin/settings/theme', { method: 'PUT', body: JSON.stringify(theme) }),
   // 功能开关：整个启用 / 关闭 Momo Talk（私信 + 好友）
