@@ -23,7 +23,11 @@
 #   · docker-compose.yml 由脚本自己生成（镜像里已经包含前端产物和二进制）；
 #   · 服务器只负责拉镜像 + 跑容器。
 # ============================================================
-set -euo pipefail
+set -Eeuo pipefail
+
+# 任何一步意外失败都打印「哪一行、什么命令」，而不是默默退出。
+# 之前 gen_pass 被 SIGPIPE 杀掉时脚本一声不响就结束了，排查成本极高。
+trap 'code=$?; [ "$code" = "0" ] || printf "\n✘ 脚本在第 %s 行失败（退出码 %s）：%s\n" "$LINENO" "$code" "$BASH_COMMAND" >&2' ERR
 
 # ---------- 可配置项（都有默认值，用命令行参数可覆盖） ----------
 ROOT="${BLOG_DIR:-/opt/blog}"                 # 站点目录（只放 compose 文件）
@@ -80,6 +84,34 @@ need_docker() {
     DC="docker-compose"
   else
     die "缺少 docker compose 插件（apt install docker-compose-plugin）"
+  fi
+}
+
+# ---------- 私有仓库登录（可选） ----------
+# 仓库若是公开的，这一整段都不需要 —— 安装命令里一个账号密码都不用带。
+# 仓库是私有的话，二选一：
+#   ① 服务器上先手动 docker login 一次，之后 spblog install / update 都不用再带
+#   ② 临时传进来：ACR_USER=xxx ACR_PASSWORD=xxx spblog install
+registry_host() {
+  local h="${IMAGE_REPO%%/*}"
+  case "$h" in
+    *.*|*:*) printf '%s' "$h" ;;   # 形如 xxx.aliyuncs.com / registry:5000
+    *)       printf '' ;;          # 否则是 Docker Hub 的用户名
+  esac
+}
+
+ensure_login() {
+  [ -n "${ACR_USER:-}" ] && [ -n "${ACR_PASSWORD:-}" ] || return 0
+  local host
+  host="$(registry_host)"
+  if [ -n "$host" ]; then
+    info "登录镜像仓库 $host"
+    printf '%s' "$ACR_PASSWORD" | docker login "$host" -u "$ACR_USER" --password-stdin \
+      || die "镜像仓库登录失败（检查账号密码，或仓库是否私有）"
+  else
+    info "登录 Docker Hub"
+    printf '%s' "$ACR_PASSWORD" | docker login -u "$ACR_USER" --password-stdin \
+      || die "Docker Hub 登录失败"
   fi
 }
 
@@ -176,8 +208,21 @@ inspect_env() {  # inspect_env <容器> <变量名>
     | sed -n "s/^$2=//p" | head -1 || true
 }
 
-gen_pass() {  # 生成 20 位字母数字
-  LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20
+# 生成 20 位字母数字。
+# 注意千万不要写成 `tr ... | head -c 20`：head 读够就退出，tr 收到 SIGPIPE，
+# 在 `set -o pipefail` 下整条管道返回 141 —— 赋值语句失败，set -e 直接把脚本杀掉，
+# 而且一行提示都没有（就是之前「✔ 已生成… 然后没反应」的真正原因）。
+gen_pass() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | cut -c1-20
+  else
+    # 没 openssl 时用 od 分块拼，避免任何「读够就退出」的进程
+    local s=""
+    while [ ${#s} -lt 40 ]; do
+      s="$s$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
+    done
+    printf '%s' "$s" | cut -c1-20
+  fi
 }
 
 load_secrets() {
@@ -207,6 +252,7 @@ wait_healthy() {
 cmd_install() {
   need_docker
   resolve_image
+  ensure_login
   ensure_compose force
   load_secrets
 
@@ -222,7 +268,10 @@ cmd_install() {
   export DB_PASSWORD ADMIN_PASSWORD
 
   info "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}"
-  $DC pull app || die "拉取失败：镜像是否已由 CI 推送？私有仓库请先 docker login"
+  $DC pull app || die "拉取失败。
+   · 镜像是否已由 CI 推送？去 ACR 控制台看标签列表
+   · 仓库是私有的？先登录一次：docker login $(registry_host || echo docker.io)
+     或者把 ACR 仓库类型改成「公开」，之后就不用登录了"
 
   info "启动数据库 / Redis / 应用"
   $DC up -d
@@ -253,6 +302,7 @@ cmd_update() {
   need_docker
   load_secrets
   resolve_image
+  ensure_login
   ensure_compose
   [ -n "$DB_PASSWORD" ] || die "没找到已有部署（$PG_NAME 容器不存在），请先执行 install"
   export DB_PASSWORD ADMIN_PASSWORD
@@ -274,7 +324,8 @@ cmd_update() {
     $DC build app || die "构建失败，线上未改动"
   else
     info "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}"
-    $DC pull app || die "拉取失败，线上未改动"
+    $DC pull app || die "拉取失败，线上未改动。
+   私有仓库请先登录：docker login $(registry_host || echo docker.io)"
   fi
 
   info "替换应用容器"
@@ -370,6 +421,11 @@ usage() {
   IMAGE_REPO=xxx/yyy        镜像仓库（默认阿里云 ACR: rineyce/spblog）
   IMAGE_TAG=latest          镜像标签（也可填 sha-xxxxxxx 回退到某次提交）
   APP_PORT=127.0.0.1:8080   端口绑定
+  ACR_USER / ACR_PASSWORD   私有仓库账号（给了就自动 docker login）
+
+一行部署示例：
+  curl -fsSL https://raw.githubusercontent.com/Dinowritecode/Simple-Blog/main/spblog.sh \
+    | ACR_USER=RinEyce ACR_PASSWORD='你的密码' bash -s -- install
 EOF
 }
 
