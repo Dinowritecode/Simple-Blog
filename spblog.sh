@@ -26,7 +26,7 @@ trap 'code=$?; [ "$code" = "0" ] || printf "\n✘ 脚本在第 %s 行失败（�
 
 # ---------- 版本 ----------
 # 改脚本时记得更新它：服务器上 `spblog version` 一眼就能看出「下载到的到底是不是新版」
-SPBLOG_VERSION="2026-11-17.3"
+SPBLOG_VERSION="2026.11.18-1654"
 
 # ---------- 可配置项 ----------
 ROOT="${BLOG_DIR:-/opt/blog}"                 # 站点目录（只放 compose 文件）
@@ -37,15 +37,47 @@ IMAGE_TAG="${IMAGE_TAG:-}"
 APP_PORT="${APP_PORT:-127.0.0.1:8080}"        # 只监听本机，前面挂 Nginx
 APP_NAME=blog-app
 PG_NAME=blog-postgres
+ADMIN_LOGIN_NAME="${ADMIN_USER:-admin}"   # 站长登录名（后端用 ADMIN_USER 建号，默认 admin）
 REDIS_NAME=blog-redis
 COMPOSE_FILE="$ROOT/docker-compose.yml"
 
 # ---------- 颜色 ----------
 C_OK=$'\033[32m'; C_WARN=$'\033[33m'; C_ERR=$'\033[31m'; C_DIM=$'\033[2m'; C_END=$'\033[0m'
+# 进度条配色：已完成 = 蔚蓝（#00AAEE，与站点主题色一致），未完成 = 白
+C_BAR=$'\033[38;2;0;170;238m'
+C_BAR_EMPTY=$'\033[38;2;255;255;255m'
+# 交互提问用浅绿（92 = 亮绿），和普通的 ▸ 灰阶、✔ 绿区分开
+C_ASK=$'\033[92m'
 info() { printf '%s\n' "${C_DIM}▸${C_END} $*"; }
 ok()   { printf '%s\n' "${C_OK}✔${C_END} $*"; }
 warn() { printf '%s\n' "${C_WARN}!${C_END} $*"; }
 die()  { printf '%s\n' "${C_ERR}✘${C_END} $*" >&2; exit 1; }
+
+# ---------- 交互提问 ----------
+# 规则：只在真终端里问（curl | bash、重定向、CI 里自动跳过，不会卡住），
+# 想完全跳过问询：SPBLOG_NO_ASKS=1（或 install 时带 --yes）
+can_ask() {
+  [ "${SPBLOG_NO_ASKS:-0}" = "1" ] && return 1
+  [ "${SPBLOG_FORCE_ASKS:-0}" = "1" ] && return 0   # 调试/测试用：即使没有 TTY 也照常提问
+  [ -t 0 ]
+}
+
+# 打印一段浅绿色的提问（不带换行，光标停在问题后面等输入）
+ask() { printf '  %s%s%s ' "$C_ASK" "$1" "$C_END"; }
+
+# 安装前的确认：y / Y / yes 才算同意，其它一律取消
+confirm_install() {
+  [ "${SPBLOG_YES:-0}" = "1" ] && return 0
+  can_ask || return 0
+  local ans=""
+  ask "是否安装 Simple-blog (y)？"
+  read -r ans || ans=""
+  [ -t 0 ] || printf "\n"
+  case "$ans" in
+    y|Y|yes|YES|是) return 0 ;;
+    *)              return 1 ;;
+  esac
+}
 
 # ---------- 启动字符画 ----------
 # 用 base64(gzip(ANSI)) 内嵌：脚本仍是纯文本，不怕编码/换行被破坏，体积也只有 1.2 KB。
@@ -54,7 +86,11 @@ die()  { printf '%s\n' "${C_ERR}✘${C_END} $*" >&2; exit 1; }
 BANNER_B64='H4sICHhK/GoCA2xvZ29fYW5zaV8xMjAudHh0ALVWUYrjMAz93yvMT8CfBjEzS2FQEfgGOsCcoehD94eV5DjJUjmzC6mgaWNH0nvSs9JleZm9ff/+un/eP77uH/7j9v6At+/3x69XBAbIH6WLUuZZSVXX5c/bbXwelYgwDCaOejmsY34qmCVFqhVnPmBon32I8ZVAkae1xVo10CLDBO51NUyxKZy3XqTRtJomgOvQ5fgIz/AJY1WtBDOAFa4EOEmCOMPH2t1MlOQgMxn/fUoSjdAwTzOdAQdDOlTtpLREkGGmeR/QWWSHDjHzKgdqz1617VZtiLUmPzGD0hr+PBksoGbMMHlY7WE7oNha6ZVFTnqw8XjeswCCsJq5izgZPVj15f3OonAwdu2GYS6s0koyrVBgRppGgbbIfnZp3CgNGskMNHfZnbB4ObwoIhaShaNJDkkklmxbvGPArbDEvqYsbIeSfJpOI7UEtISPY7DEazJf2m5OaAiHlRbYyhqnc+EQmV2lq6hvV1/yn1JtGsd+As07lqRLz4pnt5eTp9FdWOLJDpmfRmcqLYYulo4VtrZAj7estdp4yWqpRiQngdNjZGl0FDLOXXVKtlRcJ7yRSKAPIBwc1P1W2bvbGtEPXynerDLI0RrcLOVQczlljfD00QkKDLJGDtku1BGWCGcckvnEm8WRYJ/mNK62on712Pt4tiX7AhmONT8STOmMSaTk5gPFQ5qMhr7ZZgbUbhLT7l/fctlcjNDnr5T/fi1u1RO69BU8+7/9B4g3H5njCwAA'
 
 show_banner() {
+  # $1=compact 时不额外留空行（部署流程用，避免字符画和第一条提示之间空一大块）
+  local compact="${1:-}"
   [ "${SPBLOG_NO_BANNER:-0}" = "1" ] && return 0
+  [ "${SPBLOG_BANNER_DONE:-0}" = "1" ] && return 0
+  SPBLOG_BANNER_DONE=1
   local cols="${COLUMNS:-}"
   [ -n "$cols" ] || cols="$(tput cols 2>/dev/null || echo 0)"
   case "$cols" in ''|*[!0-9]*) cols=0 ;; esac
@@ -68,7 +104,26 @@ show_banner() {
     printf '   一行部署 / 一行更新\n'
     printf '  ─────────────────────────────────────\n'
   fi
-  printf '\n'
+
+  # 字符画下方两行标识（蔚蓝，左对齐、不居中）：
+  #   第 1 行：Simple-Blog@版本    RinEyce©2026   （中间空三格）
+  #   第 2 行：一句话介绍
+  # 版本号由 git pre-commit 钩子自动写入（见 .githooks/pre-commit），提交时无需手改
+  local indent=""
+  [ "${cols:-0}" -lt 120 ] 2>/dev/null && indent="  "   # 紧凑横幅时缩进 2 格，和方框对齐
+  show_tagline "$indent"
+
+  [ "$compact" = "compact" ] || printf '\n'
+}
+
+# 两行标识：全部用蔚蓝
+TAGLINE_DESC="A fast, modern, and multifunctional personal blog system"
+
+show_tagline() {
+  local indent="${1:-}"
+  # 版本号每次现取（自更新后可能已变）
+  printf '%s%s%s   %s%s\n' "$indent" "$C_BAR" "Simple-Blog@${SPBLOG_VERSION}" "RinEyce©2026" "$C_END"
+  printf '%s%s%s%s\n' "$indent" "$C_BAR" "$TAGLINE_DESC" "$C_END"
 }
 
 # ---------- 自更新 ----------
@@ -97,7 +152,7 @@ self_update() {
     fi
   fi
 
-  newver="$(sed -n 's/^SPBLOG_VERSION="\(.*\)"/\1/p' "$tmp" | head -1)"
+  newver="$(tr -d '\r' < "$tmp" | sed -n 's/^SPBLOG_VERSION="\(.*\)"/\1/p' | head -1)"
   if [ -z "$newver" ]; then
     rm -f "$tmp"
     return 0   # 下载到的不是脚本（镜像返回了错误页之类），忽略
@@ -120,6 +175,73 @@ self_update() {
   rm -f "$tmp"
   warn "脚本无法写入（$self），跳过自更新；请手动下载覆盖"
   return 0
+}
+
+# ---------- dry-run：本地调试整个部署流程 ----------
+# 打开后 docker 命令只打印不执行，其余逻辑（生成 compose、密码、进度条、
+# 健康等待、回滚判断）全部照常跑 —— 不需要服务器、不需要 Docker。
+#   spblog debug            跑 install + update 两段
+#   spblog debug install    只跑 install
+#   spblog debug update     只跑 update
+install_dry_run_stub() {
+  docker() {
+    # 查询类命令（inspect / image inspect）只返回假数据、**不打印** ——
+    # 它们的 stdout 会被 $(...) 读进变量（健康检查就是这样），
+    # 一旦打印出来，变量里就不是 healthy 而是日志文本，循环会一直转。
+    case "$1" in
+      inspect)
+        case "$*" in
+          *".State.Health"*)
+            # SPBLOG_DRY_FAIL=1 可模拟「新版本起不来」，用来调试回滚分支
+            if [ "${SPBLOG_DRY_FAIL:-0}" = "1" ]; then echo unhealthy; else echo healthy; fi ;;
+          *".Image"*) echo "${IMAGE_REPO:-crpi-x/rineyce/spblog}:${IMAGE_TAG:-latest}" ;;
+          *".Config.Env"*)
+            printf 'POSTGRES_PASSWORD=dry-run-db-pass\nADMIN_PASSWORD=dry-run-admin\n' ;;
+        esac
+        return 0 ;;
+      image) return 0 ;;
+    esac
+
+    # 调试用：想看具体执行了哪些 docker 命令就设 SPBLOG_DEBUG_CMD=1
+    # 默认不打印，保证 dry-run 的输出和服务器上**一模一样**
+    [ "${SPBLOG_DEBUG_CMD:-0}" = "1" ] && printf '  \033[2m[dry-run]\033[0m docker %s\n' "$*" >&2
+    case "$1" in
+      compose)
+        case "$2" in
+          ps) printf 'NAME         STATUS\n%-12s Up (healthy)\n' "${APP_NAME:-blog-app}" ;;
+        esac ;;
+    esac
+    return 0
+  }
+}
+
+cmd_debug() {
+  local what="${1:-all}"
+  shift || true
+  export SPBLOG_DRY_RUN=1
+  export SPBLOG_NO_SELF_UPDATE=1
+  export SPBLOG_NO_VERSION_CHECK=1
+  # 默认写到当前目录下的 .dryrun，不去碰 /opt/blog
+  if [ -z "${BLOG_DIR:-}" ]; then
+    BLOG_DIR="$PWD/.dryrun"
+  fi
+  ROOT="$BLOG_DIR"
+  COMPOSE_FILE="$ROOT/docker-compose.yml"
+  install_dry_run_stub
+  mkdir -p "$ROOT"
+
+  # 刻意什么都不额外打印：dry-run 的输出要和服务器上完全一致
+  # （想看命令就 SPBLOG_DEBUG_CMD=1）
+  case "$what" in
+    install)  cmd_install ;;
+    update)   cmd_update ;;
+    passwd)   cmd_passwd "${1:-new-password-123}" ;;
+    rollback) cmd_rollback ;;
+    version)  printf 'spblog %s\n' "$SPBLOG_VERSION" ;;
+    backup)   cmd_backup ;;
+    status)   cmd_status ;;
+    *)        cmd_install; cmd_update ;;
+  esac
 }
 
 # ---------- 依赖 ----------
@@ -309,15 +431,149 @@ load_secrets() {
   : "${ADMIN_PASSWORD:=}"
 }
 
+# ---------- 进度条 ----------
+# 完成部分蔚蓝（#00AAEE，与站点主题色一致），未完成部分白色。
+# 只在真终端里画：输出被重定向/管道时自动关掉，避免日志里一堆 \r。
+# 强制开启：SPBLOG_FORCE_PROGRESS=1   关闭：SPBLOG_NO_PROGRESS=1
+BAR_W=40            # 细进度条长度（pip 风格是「一条细线」，不是粗块）
+BAR_PCT=0
+BAR_START=0
+BAR_DRAWN=0         # 当前是否已经画出一行进度条（用于「提示信息上移到条上方」）
+
+bar_on() {
+  [ "${SPBLOG_NO_PROGRESS:-0}" = "1" ] && return 1
+  [ "${SPBLOG_FORCE_PROGRESS:-0}" = "1" ] && return 0
+  [ -t 1 ]
+}
+
+# 重复输出一个字符 N 次（纯 bash，不依赖 seq）
+_rep() {
+  local n="$1" ch="$2" s=""
+  while [ "$n" -gt 0 ]; do s="$s$ch"; n=$((n - 1)); done
+  printf '%s' "$s"
+}
+
+# 秒 → mm:ss
+_fmt_time() {
+  local s="$1"
+  printf '%d:%02d' $(( s / 60 )) $(( s % 60 ))
+}
+
+# 只重绘进度条本身（不改变状态）
+bar_render() {
+  local fill empty elapsed
+  fill=$(( BAR_PCT * BAR_W / 100 ))
+  [ "$fill" -gt "$BAR_W" ] && fill=$BAR_W
+  empty=$(( BAR_W - fill ))
+  elapsed=$( _fmt_time $(( $(date +%s) - BAR_START )) )
+  # pip 风格：4 空格缩进 + 一条细线（完成段蔚蓝、未完成段白）+ 百分比 + 已用时间
+  printf '\r    %s%s%s%s%s%s %3d%%  %s\033[K' \
+    "$C_BAR" "$(_rep "$fill" '━')" "$C_END" \
+    "$C_BAR_EMPTY" "$(_rep "$empty" '━')" "$C_END" \
+    "$BAR_PCT" "$elapsed"
+  BAR_DRAWN=1
+}
+
+bar_draw() {
+  BAR_PCT="$1"
+  [ "$BAR_PCT" -lt 0 ] && BAR_PCT=0
+  [ "$BAR_PCT" -gt 100 ] && BAR_PCT=100
+  bar_render
+}
+
+# 进度条画满并换行
+bar_done() {
+  bar_on || return 0
+  BAR_PCT=100
+  bar_render
+  printf '\n'
+  BAR_DRAWN=0
+}
+
+# 在进度条**上方**输出一行提示：先把条擦掉 → 打日志 → 再画回来
+bar_msg() {
+  if bar_on && [ "$BAR_DRAWN" = "1" ]; then
+    printf '\r\033[K'
+    info "$*"
+    bar_render
+  else
+    info "$*"
+  fi
+}
+
+# run_with_bar "标签" 命令…  —— 命令在后台跑，前台按时间推进进度
+# 命令输出先落临时文件：成功就丢弃，失败才打出来，避免和进度条互相刷新
+run_with_bar() {
+  local label="$1"; shift
+  [ "${SPBLOG_DEBUG_CMD:-0}" = "1" ] && info "  \$ $*"
+  if ! bar_on; then
+    info "$label"
+    "$@"
+    return $?
+  fi
+
+  local log pid rc t=0
+  log="$(mktemp 2>/dev/null || echo "/tmp/spblog.cmd.$$")"
+
+  info "$label"
+  BAR_START="$(date +%s)"
+  BAR_PCT=0
+  "$@" >"$log" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    # 越接近完成推进越慢（90% 封顶），等真正结束再补到 100%
+    BAR_PCT=$(( 90 * t / (t + 5) ))
+    [ "$BAR_PCT" -gt 90 ] && BAR_PCT=90
+    bar_render
+    sleep 0.2
+    t=$((t + 1))
+  done
+  wait "$pid"; rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    bar_done
+    rm -f "$log"
+  else
+    printf '\n'
+    BAR_DRAWN=0
+    sed 's/^/    /' "$log" | tail -30
+    rm -f "$log"
+  fi
+  return $rc
+}
+
+# 跑一条命令并把输出藏起来（成功只报一句完成，失败时把日志打出来）
+# 用于「启动容器」这类不需要进度条、但输出又很吵的步骤
+run_quiet() {
+  local label="$1"; shift
+  [ "${SPBLOG_DEBUG_CMD:-0}" = "1" ] && info "  \$ $*"
+  local log rc
+  log="$(mktemp 2>/dev/null || echo "/tmp/spblog.q.$$")"
+  if "$@" >"$log" 2>&1; then
+    rm -f "$log"
+    ok "$label"
+    return 0
+  fi
+  rc=$?
+  sed 's/^/    /' "$log" | tail -30
+  rm -f "$log"
+  return $rc
+}
+
 # ---------- 健康检查 ----------
+# 不再画进度条：静默轮询，成功时报一句耗时。
+# $1=容器名 $2=超时秒 $3=成功提示里用的名字（可选）
 wait_healthy() {
-  local name="$1" timeout="${2:-180}" i=0 st
+  local name="$1" timeout="${2:-180}" label="${3:-服务}" i=0 st start
+  start="$(date +%s)"
   while [ "$i" -lt "$timeout" ]; do
     st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || echo missing)"
     case "$st" in
-      healthy)   return 0 ;;
-      unhealthy) return 1 ;;
-      running)   return 0 ;;
+      healthy|running)
+        ok "${label}已就绪（耗时 $( _fmt_time $(( $(date +%s) - start )) )）"
+        return 0 ;;
+      unhealthy)
+        return 1 ;;
     esac
     sleep 1
     i=$((i + 1))
@@ -343,10 +599,90 @@ preflight_port() {
   printf '\n'
 }
 
+# ---------- 装完设置站长账号 ----------
+# 账号是后端首次启动时按 ADMIN_PASSWORD 自动建的，所以这里不是「重建账号」，而是：
+#   ① 要换用户名 → 直接在库里改 users.username（psql 在 postgres 容器里）
+#   ② 要换密码   → 调二进制自带的 changepass（与登录同一套 bcrypt）
+setup_admin_interactive() {
+  can_ask || return 0
+
+  printf '\n'
+  info "请完成网站初始设置"
+  local user pass pass2 tries=0 valid=0
+
+  ask "站长用户名 [${ADMIN_LOGIN_NAME}]："
+  read -r user || user=""
+  [ -t 0 ] || printf "\n"
+  user="${user:-$ADMIN_LOGIN_NAME}"
+  case "$user" in
+    ''|*[!A-Za-z0-9_-]*)
+      warn "用户名只能用字母、数字、下划线或短横线，已跳过"
+      return 0 ;;
+  esac
+
+  # 密码不符合规范就**重新问**（最多 3 轮），而不是直接跳过
+  while [ "$tries" -lt 3 ]; do
+    tries=$((tries + 1))
+
+    ask "站长密码（至少 6 位）："
+    read -rs pass || pass=""
+    printf '\n'
+    if [ -z "$pass" ]; then
+      return 0
+    fi
+    if [ "${#pass}" -lt 6 ]; then
+      warn "密码至少 6 位（第 ${tries}/3 次），请重新输入"
+      continue
+    fi
+
+    ask "确认密码："
+    read -rs pass2 || pass2=""
+    printf '\n'
+    if [ "$pass" != "$pass2" ]; then
+      warn "两次输入不一致（第 ${tries}/3 次），请重新设置"
+      continue
+    fi
+
+    valid=1
+    break
+  done
+
+  if [ "$valid" != "1" ]; then
+    warn "连续 3 次不符合要求，已跳过"
+    return 0
+  fi
+
+  # ① 换用户名（只改 role='admin' 那一行）
+  if [ "$user" != "$ADMIN_LOGIN_NAME" ]; then
+    if docker exec "$PG_NAME" psql -U blog -d blog -q -v ON_ERROR_STOP=1 \
+         -c "UPDATE users SET username = '$user' WHERE username = '$ADMIN_LOGIN_NAME' AND role = 'admin'" \
+         >/dev/null 2>&1; then
+      ok "站长用户名已改为 ${user}"
+      ADMIN_LOGIN_NAME="$user"
+    else
+      warn "用户名修改失败（可能已存在同名账号）"
+    fi
+  fi
+
+  # ② 换密码
+  if docker exec "$APP_NAME" /app/blog-server changepass "$ADMIN_LOGIN_NAME" "$pass" >/dev/null 2>&1; then
+    ok "站长密码已更新，请用新密码登录 /admin/login"
+  else
+    warn "密码更新失败，可稍后执行：spblog passwd <新密码>"
+  fi
+}
+
 # ---------- 安装 ----------
 cmd_install() {
   self_update install
-  show_banner
+  show_banner compact
+
+  # 1) 先问一句要不要装（浅绿提问，y 才继续）
+  if ! confirm_install; then
+    warn "已取消安装"
+    return 0
+  fi
+
   need_docker
   info "spblog v${SPBLOG_VERSION}"
   resolve_image
@@ -359,32 +695,29 @@ cmd_install() {
   [ -n "$ADMIN_PASSWORD" ] || { ADMIN_PASSWORD="$(gen_pass | cut -c1-16)"; fresh_admin=1; }
   export DB_PASSWORD ADMIN_PASSWORD
 
-  info "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}"
-  $DC pull app || die "拉取失败。
-   · 镜像是否已由 CI 推送？去 ACR 控制台看标签列表
-   · 仓库是私有的？先登录一次：docker login $(registry_host || echo docker.io)
-     或者把 ACR 仓库类型改成「公开」，之后就不用登录了"
+  if ! run_with_bar "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}" $DC pull app; then
+    die "拉取失败。"
+  fi
 
   preflight_port
-  info "启动数据库 / Redis / 应用"
-  $DC up -d
+  bar_msg "Starting Redis"
+  run_quiet "The container has been successfully started" $DC up -d || die "Container startup failed"
 
-  info "等待服务健康（首次要初始化数据库，稍慢）"
-  if wait_healthy "$APP_NAME" 240; then
+  if wait_healthy "$APP_NAME" 240 "服务"; then
     ok "部署完成"
-    printf '\n  访问地址：http://<服务器IP>:8080  （或经 Nginx 反代的域名）\n'
+    printf '\n  访问地址：http://<服务器IP>:8080 \n'
     printf '  后台入口：/admin/login\n\n'
     if [ "$fresh_admin" = "1" ]; then
-      printf '  %s\n' "========== 站长账号（只显示这一次） =========="
       printf '   %s\n' "账号：admin"
       printf '   %s\n' "密码：$ADMIN_PASSWORD"
-      printf '  %s\n\n' "=============================================="
-      printf '  %s\n\n' "改密码：spblog passwd 新密码"
+      printf '  %s\n\n' "若要修改密码请执行：spblog passwd <newpassword>"
     else
-      printf '  站长账号已存在（admin），密码未变。忘记可执行：spblog passwd 新密码\n\n'
+      printf '  站长账号已存在\n'
     fi
+    # 2) 装完问一次：要不要自定义站长用户名 / 密码
+    setup_admin_interactive
   else
-    warn "健康检查没过，最近日志："
+    warn "Health status check failed"
     $DC logs --tail 60 app || true
     die "部署未完成"
   fi
@@ -404,15 +737,14 @@ cmd_update() {
   local rollback_id=""
   rollback_id="$(docker inspect -f '{{.Image}}' "$APP_NAME" 2>/dev/null || true)"
 
-  info "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}"
-  $DC pull app || die "拉取失败，线上未改动。
+  if ! run_with_bar "拉取镜像 ${IMAGE_REPO}:${IMAGE_TAG}" $DC pull app; then
+    die "拉取失败，线上未改动。
    私有仓库请先登录：docker login $(registry_host || echo docker.io)"
+  fi
 
-  info "替换应用容器"
-  $DC up -d --no-deps app
+  run_quiet "应用容器已替换" $DC up -d --no-deps app || die "替换容器失败"
 
-  info "等待新版本健康（最多 180 秒）"
-  if wait_healthy "$APP_NAME" 180; then
+  if wait_healthy "$APP_NAME" 180 "新版本"; then
     ok "更新完成：${IMAGE_REPO}:${IMAGE_TAG}"
     $DC ps
     return 0
@@ -422,7 +754,7 @@ cmd_update() {
   if [ -n "$rollback_id" ]; then
     docker tag "$rollback_id" "${IMAGE_REPO}:${IMAGE_TAG}" >/dev/null 2>&1 || true
     $DC up -d --no-deps app
-    wait_healthy "$APP_NAME" 180 && { ok "已回滚到上一个镜像"; return 0; }
+    wait_healthy "$APP_NAME" 180 "回滚后服务" && { ok "已回滚到上一个镜像"; return 0; }
   fi
   die "更新失败：$DC logs --tail 80 app"
 }
@@ -486,27 +818,82 @@ cmd_down() {
   $DC down; ok "已停止（数据卷保留）"
 }
 
-# 命令列表：usage() 与 help 共用一份文案，改一处两边都生效
+# ---------- 版本检查（只提示，不自动改） ----------
+# `spblog` 时顺手看看远端有没有新版：结果缓存 6 小时，避免每次敲命令都联网等几秒。
+# 关掉：SPBLOG_NO_VERSION_CHECK=1
+fetch_remote_version() {
+  command -v curl >/dev/null 2>&1 || return 0
+  local tmp
+  tmp="$(mktemp 2>/dev/null || echo "/tmp/spblog.ver.$$")"
+  if curl -fsSL --connect-timeout 3 --max-time 6 "$SPBLOG_SELF_URL" -o "$tmp" 2>/dev/null \
+     || curl -fsSL --connect-timeout 3 --max-time 8 "${SPBLOG_MIRROR}${SPBLOG_SELF_URL}" -o "$tmp" 2>/dev/null; then
+    tr -d '\r' < "$tmp" | sed -n 's/^SPBLOG_VERSION="\(.*\)"/\1/p' | head -1
+  fi
+  rm -f "$tmp"
+}
+
+# 检查远端版本；有更新时**在标识下方**打一行绿色提示。
+# 结果缓存 6 小时，避免每次敲 spblog 都联网等几秒。
+# 关掉：SPBLOG_NO_VERSION_CHECK=1
+check_new_version() {
+  [ "${SPBLOG_NO_VERSION_CHECK:-0}" = "1" ] && return 0
+
+  local cache="${TMPDIR:-/tmp}/spblog-latest-version" now remote="" ts ver
+  now="$(date +%s)"
+
+  # 缓存格式：<时间戳> <版本号>
+  if [ -f "$cache" ]; then
+    read -r ts ver < "$cache" 2>/dev/null || true
+    ver="${ver%$'\r'}"   # 缓存文件可能是 CRLF（Windows 写出来的），去掉尾部回车
+    case "${ts:-}" in ''|*[!0-9]*) ts=0 ;; esac
+    if [ -n "${ver:-}" ] && [ $((now - ts)) -lt 21600 ]; then
+      remote="$ver"
+    fi
+  fi
+
+  if [ -z "$remote" ]; then
+    remote="$(fetch_remote_version)"
+    [ -n "$remote" ] && printf '%s %s\n' "$now" "$remote" > "$cache" 2>/dev/null
+  fi
+
+  [ -n "$remote" ] || return 0
+  [ "$remote" = "$SPBLOG_VERSION" ] && return 0
+
+  printf '  %s发现新版本(%s)，运行 spblog update 以应用更新%s\n\n' "$C_ASK" "$remote" "$C_END"
+}
+
+# ---------- 命令列表 ----------
+# 命令名字用「蔚蓝」（与站点主题色 #00AAEE 同一个色值），解释保持普通文字色。
+# 输出被重定向 / 管道时不加颜色（避免日志里出现转义码），
+# 需要强制上色用 SPBLOG_FORCE_COLOR=1，关掉用 SPBLOG_NO_COLOR=1。
 print_commands() {
-  cat <<'EOF'
-常见命令
+  local c='' w='' r=''
+  if [ "${SPBLOG_FORCE_COLOR:-0}" = "1" ] || { [ -t 1 ] && [ "${SPBLOG_NO_COLOR:-0}" != "1" ]; }; then
+    c=$'\033[38;2;0;170;238m'          # 命令名：蔚蓝
+    w=$'\033[38;2;255;255;255m'        # 解释：白
+    r=$'\033[0m'
+  fi
 
-  install          首次部署/启动
-  update           拉取最新版本
-                     --tag sha-xxxxxxx  回退到指定版本
-  rollback         回滚到上一个镜像
-  passwd <new_password>   重置站长密码
-  backup           备份数据库 + 上传文件
-  status / logs / restart / down
-  version          显示脚本版本
-  upgrade          只更新脚本本身（不动容器）
-  help             帮助（不带字符画）
-
-EOF
+  printf '常见命令\n\n'
+  printf '  %sinstall%s              %s首次部署/启动%s\n' "$c" "$r" "$w" "$r"
+  printf '  %supdate%s               %s拉取最新版本%s\n' "$c" "$r" "$w" "$r"
+  printf '                       %s--tag sha-xxxxxxx%s  %s回退到指定版本%s\n' "$c" "$r" "$w" "$r"
+  printf '  %srollback%s             %s回滚到上一个镜像%s\n' "$c" "$r" "$w" "$r"
+  printf '  %spasswd%s %s<new_password>%s   %s重置站长密码%s\n' "$c" "$r" "$c" "$r" "$w" "$r"
+  printf '  %sbackup%s               %s备份数据库 + 上传文件%s\n' "$c" "$r" "$w" "$r"
+  printf '  %sstatus%s / %slogs%s / %srestart%s / %sdown%s\n' "$c" "$r" "$c" "$r" "$c" "$r" "$c" "$r"
+  printf '  %sversion%s              %s显示脚本版本%s\n' "$c" "$r" "$w" "$r"
+  printf '  %shelp%s                 %s帮助（不带字符画）%s\n' "$c" "$r" "$w" "$r"
+  printf '\n'
+  # 隐藏命令（照常可用，只是不列出来）：
+  #   upgrade  只更新脚本本身（自更新/版本提示会引导用户用 update）
+  #   demo     本地预览终端输出
+  #   debug    跑一遍完整流程（docker 只打印不执行）
 }
 
 usage() {
   show_banner
+  check_new_version      # 紧跟标识下方：有新版就在这里提示
   print_commands
 }
 
@@ -520,6 +907,48 @@ cmd_upgrade() {
   info "当前版本：spblog ${SPBLOG_VERSION}"
   self_update upgrade
   ok "已是最新版本：spblog ${SPBLOG_VERSION}"
+}
+
+# ---------- demo：本地预览终端输出（不需要 Docker / 服务器） ----------
+# 改脚本里的字符画、进度条样式、提示文案时，用它快速看效果：
+#   bash spblog.sh demo          正常速度
+#   bash spblog.sh demo fast     加速（约 2 秒跑完）
+cmd_demo() {
+  local fast="${1:-}"
+  local step=0.06
+  [ "$fast" = "fast" ] && step=0.01
+
+  show_banner compact
+  info "spblog v${SPBLOG_VERSION}（demo，不执行任何 docker 命令）"
+
+  info "拉取镜像 crpi-jlqf5sfrp7vsp54s.cn-hangzhou.personal.cr.aliyuncs.com/rineyce/spblog:latest"
+  BAR_START="$(date +%s)"
+  BAR_PCT=0
+  bar_render
+  local i
+  for i in 3 8 14 21 27 34; do
+    BAR_PCT=$i; bar_render; sleep "$step"
+  done
+  bar_msg "已下载 3/7 层"
+  for i in 41 48 57 66 74 83 90; do
+    BAR_PCT=$i; bar_render; sleep "$step"
+  done
+  bar_done
+  ok "容器已启动"
+  ok "服务已就绪（耗时 0:08）"
+  ok "部署完成"
+
+  printf '\n'
+  info "spblog demo update（更新流程）"
+  info "拉取镜像 crpi-…/spblog:latest"
+  BAR_START="$(date +%s)"
+  for i in 10 25 40 58 72 85 95; do
+    BAR_PCT=$i; bar_render; sleep "$step"
+  done
+  bar_done
+  ok "应用容器已替换"
+  ok "新版本已就绪（耗时 0:06）"
+  ok "更新完成：crpi-…/spblog:latest"
 }
 
 # ---------- 参数 ----------
@@ -546,6 +975,8 @@ case "$CMD" in
   version)  printf 'spblog %s\n' "$SPBLOG_VERSION" ;;
   help|-h|--help) cmd_help ;;
   upgrade)  cmd_upgrade ;;
+  demo)     cmd_demo "${ARGS[0]:-}" ;;
+  debug)    cmd_debug "${ARGS[0]:-}" ;;
   logs)     cmd_logs ;;
   restart)  cmd_restart ;;
   down)     cmd_down ;;

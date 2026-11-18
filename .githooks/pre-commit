@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# ============================================================
+# pre-commit 钩子：自动给 spblog.sh 打版本号
+#
+# 为什么不用手改：版本号只用来做「服务器上是不是新版」的比对，
+# 每次提交由这个钩子写成「日期-时分」，不可能忘记更新，也不会重复。
+#
+# 启用（在仓库根目录执行一次）：
+#   git config core.hooksPath .githooks
+# ============================================================
+set -e
+
+FILE="spblog.sh"
+[ -f "$FILE" ] || exit 0
+
+VER="$(date +%Y.%m.%d-%H%M)"
+
+if grep -q '^SPBLOG_VERSION=' "$FILE"; then
+  # 用临时文件替换，避免 sed -i 在 macOS/Git-Bash 上的兼容问题
+  tmp="$(mktemp)"
+  sed "s/^SPBLOG_VERSION=.*/SPBLOG_VERSION=\"$VER\"/" "$FILE" > "$tmp"
+  mv "$tmp" "$FILE"
+  chmod +x "$FILE" 2>/dev/null || true
+  git add "$FILE"
+  echo "[pre-commit] spblog.sh 版本号 → $VER"
+fi
+
+exit 0
