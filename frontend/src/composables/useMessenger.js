@@ -77,6 +77,11 @@ async function loadFriends() {
     incoming.value = d.incoming || []
     outgoing.value = d.outgoing || []
     realtimeOn.value = !!d.realtime
+    // 正在和某人聊天时，成员列表里那个人的未读也强制归零（同 loadConversations 的理由）
+    if (view.value === 'chat' && active.value) {
+      const f = friends.value.find((x) => x.id === active.value.id)
+      if (f) f.unread = 0
+    }
     error.value = ''
   } catch (e) {
     error.value = e.message
@@ -88,6 +93,13 @@ async function loadConversations() {
   try {
     const d = await api.listConversations()
     conversations.value = d.items || []
+    // 正在和某人聊天时，那个会话的未读强制归零：
+    // 服务端的 last_read_seq 可能比这次列表请求晚一拍，不强制清会出现
+    // 「明明在看消息，列表里还挂着红点，点一下才消失」。
+    if (view.value === 'chat' && activeConvId.value) {
+      const row = conversations.value.find((c) => c.conversationId === activeConvId.value)
+      if (row) row.unread = 0
+    }
     if (d.unread) {
       unread.chat = d.unread.chat || 0
       unread.friend = d.unread.friend || 0
@@ -266,9 +278,40 @@ async function startChat(user) {
     listMode.value = 'chats'
     messages.value = []
     await loadMessages()
+    await markRead(d.conversationId)   // 从资料卡进来也要立刻清未读
     loadConversations()
+    loadFriends()
   } catch (e) {
     error.value = e.message
+  }
+}
+
+/**
+ * 把某个会话标记为已读，并把「会话列表 + 成员列表」里对应的红点一起清掉。
+ * 集中成一个函数，是为了保证三处（会话行、成员行、汇总角标）永远同步 ——
+ * 以前只有会话行被清零，成员列表里的红点要靠再点一下才消失。
+ */
+async function markRead(convId) {
+  if (!convId) return
+  try {
+    const d = await api.readConversation(convId)
+    if (d && d.unread) Object.assign(unread, d.unread)
+  } catch {
+    /* 标记失败不影响聊天本身，下次拉列表会自愈 */
+  }
+  const row = conversations.value.find((c) => c.conversationId === convId)
+  if (row && row.peer) {
+    row.unread = 0
+    const f = friends.value.find((x) => x.id === row.peer.id)
+    if (f) f.unread = 0
+  }
+  // 当前正在看的这个会话，从汇总角标里扣掉（服务端返回值可能还差一拍）
+  if (view.value === 'chat' && activeConvId.value === convId) {
+    const remain = conversations.value
+      .filter((c) => c.conversationId !== convId)
+      .reduce((n, c) => n + (c.unread || 0), 0)
+    unread.chat = remain
+    unread.total = (unread.friend || 0) + (unread.notification || 0) + remain
   }
 }
 
@@ -282,11 +325,7 @@ async function openConversation(item) {
   messages.value = []
   await loadMessages()
   // 打开即已读
-  api.readConversation(item.conversationId).then((d) => {
-    if (d && d.unread) Object.assign(unread, d.unread)
-    const row = conversations.value.find((c) => c.conversationId === item.conversationId)
-    if (row) row.unread = 0
-  }).catch(() => {})
+  await markRead(item.conversationId)
 }
 
 /**
@@ -417,17 +456,19 @@ function connectStream() {
     try { payload = JSON.parse(e.data) } catch { return }
     const msg = payload.message
     if (!msg) return
-    refreshUnread()
     if (activeConvId.value === payload.conversationId) {
-      // 正在和这个人聊天：直接追加，并标记已读
+      // 正在和这个人聊天：直接追加，并**先标记已读再刷新列表**
+      // （顺序颠倒过：先 refreshUnread 会把刚读过的数字又显示出来）
       if (!messages.value.some((m) => m.id === msg.id)) {
         messages.value.push(msg)
         scrollToBottom()
       }
-      api.readConversation(activeConvId.value).then((d) => {
-        if (d && d.unread) Object.assign(unread, d.unread)
-      }).catch(() => {})
+      markRead(payload.conversationId)
+        .then(() => { loadConversations(); loadFriends() })
+        .catch(() => { loadConversations(); loadFriends() })
+      return
     }
+    refreshUnread()
     loadConversations()
     loadFriends()
   })

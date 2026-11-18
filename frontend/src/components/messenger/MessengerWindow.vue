@@ -72,7 +72,6 @@ const myLevel = computed(() => user.value?.level || 1)
              而不是从中央那颗图标飞过来（中央那颗是直接在原地缩没的） -->
         <img v-if="showBar" class="mz-bar-logo" :src="logoUrl" alt="" />
         <span class="mz-bar-title">Momo Talk</span>
-        <span class="mz-bar-help" title="Momo Talk 是站内私信">?</span>
         <span class="mz-bar-spacer"></span>
         <button class="mz-bar-close" title="关闭" @click="onClose">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -252,18 +251,6 @@ const myLevel = computed(() => user.value?.level || 1)
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 1px;
-}
-.mz-bar-help {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.9);
-  color: #e2567b;
-  font-size: 11px;
-  font-weight: 800;
 }
 .mz-bar-spacer { flex: 1; }
 .mz-bar-close {

@@ -82,8 +82,10 @@ export function useAuth() {
     return u.username || '用户'
   })
 
-  // 头像 URL（空则返回空串，组件里渲染首字母占位）
-  const avatarUrl = computed(() => user.value?.avatar || '')
+  // 头像 URL：没设头像时回落到站点默认头像（public/pic/avatar.jpg），
+  // 这样「上传头像」就是可选的 —— 不传也不会出现空白圆圈或首字母占位。
+  const DEFAULT_AVATAR = '/pic/avatar.jpg'
+  const avatarUrl = computed(() => user.value?.avatar || DEFAULT_AVATAR)
 
   return {
     token,

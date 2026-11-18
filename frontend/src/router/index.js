@@ -19,6 +19,14 @@ const routes = [
   // 站长：独立后台登录页（仅登录，无注册 —— 站长账号部署时自动创建）
   { path: '/admin/login', name: 'admin-login', component: () => import('../views/AdminLoginView.vue'), meta: { hideChrome: true } },
 
+  // 后台首次初始化的引导页：上传头像 + 填邮箱，只出现一次
+  {
+    path: '/admin/setup',
+    name: 'admin-setup',
+    component: () => import('../views/AdminSetupView.vue'),
+    meta: { hideChrome: true, requiresAuth: true, requiresAdmin: true }
+  },
+
   {
     path: '/admin',
     component: () => import('../views/AdminLayout.vue'),
@@ -30,6 +38,7 @@ const routes = [
       { path: 'comments', name: 'admin-comments', component: () => import('../views/AdminCommentsView.vue') },
       { path: 'users', name: 'admin-users', component: () => import('../views/AdminUsersView.vue') },
       { path: 'settings', name: 'admin-settings', component: () => import('../views/AdminSettingsView.vue') },
+      { path: 'account', name: 'admin-account', component: () => import('../views/AdminAccountView.vue') },
       { path: 'backup', name: 'admin-backup', component: () => import('../views/AdminBackupView.vue') }
     ]
   },

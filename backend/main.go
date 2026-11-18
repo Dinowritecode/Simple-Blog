@@ -258,6 +258,9 @@ func main() {
 			admin.PUT("/settings/clickfx", handleAdminUpdateClickFX)   // 页面管理：点击特效（ba-click-fx）参数
 			admin.PUT("/settings/content", handleAdminUpdateContent)   // 页面管理：首页文案 + 首屏头像 + 登录页背景
 
+			admin.GET("/onboarding", handleAdminOnboardingState)     // 首次进入后台的初始化引导：查状态
+			admin.POST("/onboarding", handleAdminOnboardingComplete) // 首次进入后台的初始化引导：完成
+
 			admin.GET("/backup/info", handleBackupInfo)      // 备份：当前数据概览（各表行数 / 文件数 / 体积）
 			admin.GET("/backup/export", handleBackupExport)  // 备份：流式下载 zip
 			admin.POST("/backup/import", handleBackupImport) // 备份：上传并恢复（整体替换，需确认词）

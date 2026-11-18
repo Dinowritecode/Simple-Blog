@@ -97,7 +97,11 @@ function onKeydown(e) {
 //   glassAtTop ：下方毛玻璃区域已经滑到顶部（hero 完全滚出视口）
 //                · 没到顶部 → 保持「偏透明」的毛玻璃
 //                · 到顶部之后 → 换成与内容块完全相同的奶白色磨砂
-const onImage = ref(false)
+// 初始值直接就按「有没有背景图」猜一次：
+// 用 ref(false) 的话，首次渲染必走「普通页面」分支 → 文字是近黑色，
+// 等 JS 测完 / 图片画出来才变白，看起来就是「加载完还是黑的，过一下才变」。
+// useSite 现在会先灌一份本地缓存，所以回访时这里一开始就是 true。
+const onImage = ref(route.path === '/' && !!homeBg.value)
 const glassAtTop = ref(false)
 // 当前滚动位置：首屏判定直接用它，比测量 hero 更稳
 const scrollY = ref(0)

@@ -26,7 +26,7 @@ trap 'code=$?; [ "$code" = "0" ] || printf "\n✘ 脚本在第 %s 行失败（�
 
 # ---------- 版本 ----------
 # 改脚本时记得更新它：服务器上 `spblog version` 一眼就能看出「下载到的到底是不是新版」
-SPBLOG_VERSION="2026.11.18-1654"
+SPBLOG_VERSION="2026.11.19-0015"
 
 # ---------- 可配置项 ----------
 ROOT="${BLOG_DIR:-/opt/blog}"                 # 站点目录（只放 compose 文件）

@@ -81,6 +81,10 @@ export const api = {
   // 页面管理：点击特效（ba-click-fx）——整体保存一份参数对象
   saveClickFx: (clickFx) => request('/admin/settings/clickfx', { method: 'PUT', body: JSON.stringify(clickFx) }),
 
+  // 后台首次进入的初始化引导（上传头像 + 填邮箱，做一次就不再出现）
+  getOnboarding: () => request('/admin/onboarding'),
+  completeOnboarding: (email) => request('/admin/onboarding', { method: 'POST', body: JSON.stringify({ email }) }),
+
   // ---------- 用户中心（需登录） ----------
   getMe: () => request('/user/me'),
   // 昵称 / 主页封面：两个字段都可选，只传要改的那个

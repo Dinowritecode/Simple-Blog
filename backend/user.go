@@ -53,12 +53,13 @@ func handleUpdateProfile(c *gin.Context) {
 	var req struct {
 		Nickname *string `json:"nickname"`
 		Cover    *string `json:"cover"`
+		Email    *string `json:"email"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
-	if req.Nickname == nil && req.Cover == nil {
+	if req.Nickname == nil && req.Cover == nil && req.Email == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "没有要修改的字段"})
 		return
 	}
@@ -97,6 +98,28 @@ func handleUpdateProfile(c *gin.Context) {
 			return
 		}
 		u.Cover = cover
+	}
+
+	if req.Email != nil {
+		email := strings.TrimSpace(*req.Email)
+		if email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱不能为空"})
+			return
+		}
+		if len([]rune(email)) > 120 || !emailPattern.MatchString(email) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱格式不正确"})
+			return
+		}
+		var taken int
+		if err := q.QueryRow(`SELECT COUNT(*) FROM users WHERE email = ? AND id <> ?`, email, u.ID).Scan(&taken); err == nil && taken > 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "这个邮箱已经被其它账号占用"})
+			return
+		}
+		if _, err := q.Exec(`UPDATE users SET email = ? WHERE id = ?`, email, u.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		u.Email = email
 	}
 
 	c.JSON(http.StatusOK, u)

@@ -156,31 +156,48 @@ export function pickClickFx(s) {
   }
 }
 
+// 把一份设置对象灌进各个 ref（接口返回、以及本地缓存复用同一套逻辑）
+function applySettings(s) {
+  homeBg.value = s.homeBg || ''
+  postBg.value = s.postBg || ''
+  heroNickname.value = s.heroNickname || ''
+  heroDesc.value = s.heroDesc || ''
+  heroRoles.value = s.heroRoles || ''
+  heroAvatar.value = s.heroAvatar || ''
+  loginBg.value = s.loginBg || ''
+  startedAt.value = Number(s.startedAt) || 0
+  notice.value = s.notice || ''
+  pageSize.value = Number(s.pageSize) || DEFAULT_PAGE_SIZE
+  theme.value = pickTheme(s)
+  applyTheme()
+  // 功能开关：后端没返回该字段（旧版本）时按「启用」处理
+  momoTalkEnabled.value = s.momoTalkEnabled !== false
+  siteFont.value = s.siteFont || 'system'
+  applyFont(siteFont.value)
+  clickFx.value = pickClickFx(s.clickFx)
+}
+
+// ---------- 本地缓存：让「首屏」就知道有没有背景图 ----------
+// 为什么需要：背景图地址是异步请求来的，NavBar 在拿到它之前会按「普通页面」渲染
+// （文字是近黑色的）。等接口回来、图片再画出来，导航栏文字才转白 —— 用户看到的就是
+// 「页面加载完了，导航栏还是黑的，过一下才变白」。把上次的设置缓存一份并在模块加载时
+// 先灌进去，最常见的「回访」场景就没有这个闪变了。
+const CACHE_KEY = 'spblog_site_settings'
+try {
+  const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null')
+  if (cached && typeof cached === 'object') applySettings(cached)
+} catch {
+  /* 缓存坏了就忽略，等接口回来再灌 */
+}
+
 export function useSite() {
   if (!loading) {
     // 不再需要监听主题变化：面板底色由样式表按主题决定（夜间模式强制黑），
     // 这里写入的只是「自定义色 + 浓度」，深浅主题都会自动重算。
     loading = api.getSettings()
       .then((s) => {
-        homeBg.value = s.homeBg || ''
-        postBg.value = s.postBg || ''
-        heroNickname.value = s.heroNickname || ''
-        heroDesc.value = s.heroDesc || ''
-        heroRoles.value = s.heroRoles || ''
-        heroAvatar.value = s.heroAvatar || ''
-        loginBg.value = s.loginBg || ''
-        startedAt.value = Number(s.startedAt) || 0
-        notice.value = s.notice || ''
-        pageSize.value = Number(s.pageSize) || DEFAULT_PAGE_SIZE
-        theme.value = pickTheme(s)
-        applyTheme()
-        // 功能开关：后端没返回该字段（旧版本）时按「启用」处理
-        momoTalkEnabled.value = s.momoTalkEnabled !== false
-        // 全站字体
-        siteFont.value = s.siteFont || 'system'
-        applyFont(siteFont.value)
-        // 点击特效（后台「页面管理」里改）
-        clickFx.value = pickClickFx(s.clickFx)
+        applySettings(s)
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(s)) } catch { /* 隐私模式下写不进去，无所谓 */ }
       })
       .catch(() => { /* 读取失败时保持默认值（用样式表里的默认外观） */ })
       .finally(() => { ready.value = true })

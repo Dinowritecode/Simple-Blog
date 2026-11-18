@@ -1,24 +1,23 @@
 <script setup>
 // ============================================================
-// ImageCropper.vue —— 通用「选图 → 裁剪 → 输出」弹窗
+// ImageCropper.vue —— 通用「选图 → 框选 → 输出」弹窗
 //
-// 为什么要裁剪：背景图/封面在页面里是固定比例的容器 + object-fit: cover，
-// 用户上传什么比例都会被裁，但**裁哪里**由浏览器决定，常常把头切掉。
-// 这里让用户自己决定可视区域，并且裁剪框比例直接用「页面上的实际显示比例」，
-// 所见即所得。
+// 交互（与常见「拖图片」的裁剪器不同）：
+//   · 图片铺满画布后**不动**，由用户拖一个白色方框来选择保留区域
+//   · 方框四角是加粗的蓝色手柄，拖动即可改变大小（始终跟随目标比例）
+//   · 方框内画一个加粗的白色圆形，预览头像的圆形裁切效果（仅 1:1 时）
+//   · 右侧是画布模式的实时预览：框住哪里就放大显示哪里，随选区缩放
 //
 // 用法：
-//   <ImageCropper :open="cropOpen" :file="pendingFile" :aspect="ratio" title="裁剪背景图"
-//                 :out-width="1920" @done="onCropped" @close="cropOpen = false" />
-//
-// 交互：拖动移动图片，滚轮 / 滑块缩放，裁剪框外的部分会被裁掉。
+//   <ImageCropper :open="cropOpen" :file="pendingFile" :aspect="1" :out-width="512"
+//                 title="裁剪头像" @done="onCropped" @close="cropOpen = false" />
 // ============================================================
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   file: { type: Object, default: null },
-  // 裁剪框宽高比（页面上实际的显示比例）
+  // 选区宽高比（页面上实际的显示比例）
   aspect: { type: Number, default: 16 / 9 },
   // 输出图片的最大宽度（px），高度按比例算
   outWidth: { type: Number, default: 1920 },
@@ -29,19 +28,46 @@ const emit = defineEmits(['done', 'close'])
 
 const rawImg = ref(null)
 const srcUrl = ref('')
-const zoom = ref(1)
-const ox = ref(0)
-const oy = ref(0)
-const dragging = ref(false)
-const dragFrom = ref({ x: 0, y: 0, ox: 0, oy: 0 })
 const processing = ref(false)
 const error = ref('')
+const nat = ref({ w: 0, h: 0 })
 
-// ---------- 裁剪框尺寸：按视口自适应，但保持目标比例 ----------
+const stageEl = ref(null)
 const stage = ref({ w: 640, h: 360 })
+const sel = ref({ x: 0, y: 0, w: 0, h: 0 })
+
+// 头像是圆的：1:1 时在选区内画一个白色圆环预览
+const isCircle = computed(() => Math.abs(props.aspect - 1) < 0.01)
+
+// ---------- 画布：图片按 contain 铺进舞台（不超出、不裁切） ----------
+const fit = computed(() => {
+  const { w: sw, h: sh } = stage.value
+  const { w: iw, h: ih } = nat.value
+  if (!iw || !ih) return { x: 0, y: 0, w: sw, h: sh, scale: 1 }
+  const scale = Math.min(sw / iw, sh / ih)
+  const w = iw * scale
+  const h = ih * scale
+  return { x: (sw - w) / 2, y: (sh - h) / 2, w, h, scale }
+})
+
+const imgStyle = computed(() => ({
+  left: fit.value.x + 'px',
+  top: fit.value.y + 'px',
+  width: fit.value.w + 'px',
+  height: fit.value.h + 'px'
+}))
+
+const selStyle = computed(() => ({
+  left: sel.value.x + 'px',
+  top: sel.value.y + 'px',
+  width: sel.value.w + 'px',
+  height: sel.value.h + 'px'
+}))
+
+// ---------- 舞台尺寸：给「图片 + 右侧预览」留出空间 ----------
 function computeStage() {
-  const maxW = Math.min(window.innerWidth * 0.86, 1100)
-  const maxH = window.innerHeight * 0.60
+  const maxW = Math.min(window.innerWidth * 0.72, 900)
+  const maxH = window.innerHeight * 0.58
   let w = maxW
   let h = w / props.aspect
   if (h > maxH) {
@@ -51,28 +77,140 @@ function computeStage() {
   stage.value = { w: Math.round(w), h: Math.round(h) }
 }
 
-const displayW = computed(() =>
-  rawImg.value ? rawImg.value.naturalWidth * baseScale.value * zoom.value : 0
-)
-const displayH = computed(() =>
-  rawImg.value ? rawImg.value.naturalHeight * baseScale.value * zoom.value : 0
-)
-// 基础缩放：先让图片铺满裁剪框（cover），此时 zoom = 1
-const baseScale = computed(() => {
-  if (!rawImg.value) return 1
-  const { naturalWidth: w, naturalHeight: h } = rawImg.value
-  return Math.max(stage.value.w / w, stage.value.h / h)
-})
-
-function clampOffset() {
-  ox.value = Math.min(0, Math.max(ox.value, stage.value.w - displayW.value))
-  oy.value = Math.min(0, Math.max(oy.value, stage.value.h - displayH.value))
+// 选区初始化：贴着图片，取能放下的最大比例框的 86%，居中
+function resetSelection() {
+  const f = fit.value
+  const k = 0.86
+  let w = Math.min(f.w * k, f.h * k * props.aspect)
+  let h = w / props.aspect
+  sel.value = {
+    x: f.x + (f.w - w) / 2,
+    y: f.y + (f.h - h) / 2,
+    w,
+    h
+  }
 }
 
+const MIN_SIZE = 48
+
+function clampSelection(s) {
+  const f = fit.value
+  return {
+    x: Math.min(Math.max(s.x, f.x), f.x + f.w - s.w),
+    y: Math.min(Math.max(s.y, f.y), f.y + f.h - s.h),
+    w: s.w,
+    h: s.h
+  }
+}
+
+// ---------- 拖拽：移动选区 / 拖四角改大小 ----------
+let dragMode = null
+let dragStart = null
+let stageBox = null
+
+function beginDrag(ev, mode) {
+  if (!rawImg.value) return
+  ev.preventDefault()
+  ev.stopPropagation()
+  dragMode = mode
+  stageBox = stageEl.value.getBoundingClientRect()
+  dragStart = { px: ev.clientX, py: ev.clientY, sel: { ...sel.value } }
+  window.addEventListener('pointermove', onDrag)
+  window.addEventListener('pointerup', endDrag)
+  window.addEventListener('pointercancel', endDrag)
+}
+
+function onDrag(ev) {
+  if (!dragMode || !dragStart) return
+  const dx = ev.clientX - dragStart.px
+  const dy = ev.clientY - dragStart.py
+  const s0 = dragStart.sel
+
+  if (dragMode === 'move') {
+    sel.value = clampSelection({ ...s0, x: s0.x + dx, y: s0.y + dy })
+    return
+  }
+
+  // 四角：对角固定，按指针位置算新边长（保持比例）
+  const px = ev.clientX - stageBox.left
+  const py = ev.clientY - stageBox.top
+  const f = fit.value
+  const anchors = {
+    nw: { x: s0.x + s0.w, y: s0.y + s0.h }, // 固定右下
+    ne: { x: s0.x, y: s0.y + s0.h }, // 固定左下
+    sw: { x: s0.x + s0.w, y: s0.y }, // 固定右上
+    se: { x: s0.x, y: s0.y } // 固定左上
+  }
+  const a = anchors[dragMode]
+  const rawW = Math.max(Math.abs(px - a.x), Math.abs(py - a.y) * props.aspect)
+  // 上限：从锚点出发，图片内还能放多大
+  const roomW = dragMode === 'nw' || dragMode === 'sw'
+    ? a.x - f.x
+    : f.x + f.w - a.x
+  const roomH = dragMode === 'nw' || dragMode === 'ne'
+    ? a.y - f.y
+    : f.y + f.h - a.y
+  const maxW = Math.max(MIN_SIZE, Math.min(roomW, roomH * props.aspect))
+  const w = Math.min(Math.max(rawW, MIN_SIZE), maxW)
+  const h = w / props.aspect
+  const x = dragMode === 'nw' || dragMode === 'sw' ? a.x - w : a.x
+  const y = dragMode === 'nw' || dragMode === 'ne' ? a.y - h : a.y
+  sel.value = clampSelection({ x, y, w, h })
+}
+
+function endDrag() {
+  dragMode = null
+  dragStart = null
+  window.removeEventListener('pointermove', onDrag)
+  window.removeEventListener('pointerup', endDrag)
+  window.removeEventListener('pointercancel', endDrag)
+}
+
+// ---------- 画布模式预览：框住哪里就放大显示哪里 ----------
+const previewCanvas = ref(null)
+const PREVIEW_W = 150
+
+function drawPreview() {
+  const cv = previewCanvas.value
+  const img = rawImg.value
+  if (!cv || !img) return
+  const f = fit.value
+  if (!f.scale) return
+  // 选区 → 原图坐标
+  const sx = (sel.value.x - f.x) / f.scale
+  const sy = (sel.value.y - f.y) / f.scale
+  const sw = sel.value.w / f.scale
+  const sh = sel.value.h / f.scale
+  const w = PREVIEW_W
+  const h = Math.round(w / props.aspect)
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  cv.width = Math.round(w * dpr)
+  cv.height = Math.round(h * dpr)
+  cv.style.width = w + 'px'
+  cv.style.height = h + 'px'
+  const ctx = cv.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, w, h)
+  ctx.imageSmoothingQuality = 'high'
+  ctx.save()
+  if (isCircle.value) {
+    ctx.beginPath()
+    ctx.arc(w / 2, h / 2, Math.min(w, h) / 2, 0, Math.PI * 2)
+    ctx.clip()
+  }
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h)
+  ctx.restore()
+}
+
+watch(sel, () => nextTick(drawPreview), { deep: true })
+
+// ---------- 载入图片 ----------
+let loadSeq = 0
 function load(file) {
+  const seq = ++loadSeq
   error.value = ''
   rawImg.value = null
-  zoom.value = 1
+  nat.value = { w: 0, h: 0 }
   if (srcUrl.value) URL.revokeObjectURL(srcUrl.value)
   srcUrl.value = ''
   if (!file) return
@@ -83,58 +221,43 @@ function load(file) {
   computeStage()
   const img = new Image()
   img.onload = () => {
+    if (seq !== loadSeq) return   // 已有更新的加载，丢弃这次结果
     rawImg.value = img
-    // 居中
-    requestAnimationFrame(() => {
-      ox.value = (stage.value.w - displayW.value) / 2
-      oy.value = (stage.value.h - displayH.value) / 2
-      clampOffset()
+    nat.value = { w: img.naturalWidth, h: img.naturalHeight }
+    if (!img.naturalWidth || !img.naturalHeight) {
+      error.value = '无法读取图片喵~'
+      return
+    }
+    nextTick(() => {
+      resetSelection()
+      drawPreview()
     })
   }
-  img.onerror = () => { error.value = '图片加载失败' }
+  // 解码失败：只给文字提示，不再让浏览器画那个「裂开的小图标」
+  img.onerror = () => {
+    if (seq !== loadSeq) return
+    rawImg.value = null
+    srcUrl.value = ''
+    error.value = '图片加载失败，换一张试试'
+  }
   srcUrl.value = URL.createObjectURL(file)
   img.src = srcUrl.value
 }
 
-watch(() => props.file, (f) => { if (props.open) load(f) })
-watch(
-  () => props.open,
-  (v) => {
-    if (v) {
-      computeStage()
-      load(props.file)
-    } else {
-      rawImg.value = null
-      if (srcUrl.value) URL.revokeObjectURL(srcUrl.value)
-      srcUrl.value = ''
-    }
+// 只用一个 watcher：open 与 file 常常在同一 tick 里一起变，
+// 分成两个 watcher 会 load 两次（第二次把第一次的 blob URL revoke 掉，
+// <img> 于是报 ERR_FILE_NOT_FOUND，看起来像「图片加载失败」）。
+watch([() => props.open, () => props.file], ([v]) => {
+  if (v) {
+    computeStage()
+    load(props.file)
+  } else {
+    loadSeq++
+    rawImg.value = null
+    if (srcUrl.value) URL.revokeObjectURL(srcUrl.value)
+    srcUrl.value = ''
   }
-)
-
-// ---------- 交互 ----------
-function onZoom() { clampOffset() }
-
-function onDown(ev) {
-  if (!rawImg.value) return
-  dragging.value = true
-  dragFrom.value = { x: ev.clientX, y: ev.clientY, ox: ox.value, oy: oy.value }
-  ev.currentTarget.setPointerCapture?.(ev.pointerId)
-}
-function onMove(ev) {
-  if (!dragging.value) return
-  ox.value = dragFrom.value.ox + (ev.clientX - dragFrom.value.x)
-  oy.value = dragFrom.value.oy + (ev.clientY - dragFrom.value.y)
-  clampOffset()
-}
-function onUp() { dragging.value = false }
-
-function onWheel(ev) {
-  if (!rawImg.value) return
-  ev.preventDefault()
-  const next = zoom.value * (ev.deltaY < 0 ? 1.08 : 0.92)
-  zoom.value = Math.min(4, Math.max(1, Number(next.toFixed(3))))
-  clampOffset()
-}
+})
 
 // ---------- 输出 ----------
 const outH = computed(() => Math.round(props.outWidth / props.aspect))
@@ -144,11 +267,11 @@ async function confirm() {
   if (!img || processing.value) return
   processing.value = true
   try {
-    const s = baseScale.value * zoom.value
-    const sx = -ox.value / s
-    const sy = -oy.value / s
-    const sw = stage.value.w / s
-    const sh = stage.value.h / s
+    const f = fit.value
+    const sx = (sel.value.x - f.x) / f.scale
+    const sy = (sel.value.y - f.y) / f.scale
+    const sw = sel.value.w / f.scale
+    const sh = sel.value.h / f.scale
     const canvas = document.createElement('canvas')
     canvas.width = props.outWidth
     canvas.height = outH.value
@@ -188,6 +311,7 @@ watch(() => props.open, (v) => {
   }
 })
 onBeforeUnmount(() => {
+  endDrag()
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('resize', computeStage)
   if (srcUrl.value) URL.revokeObjectURL(srcUrl.value)
@@ -205,45 +329,49 @@ onBeforeUnmount(() => {
           </div>
 
           <p class="crop-tip">
-            拖动图片选择位置，滚轮或滑块缩放。
-            <span class="crop-ratio">{{ aspect.toFixed(2) }} : 1</span>
-            · 输出 {{ outWidth }} × {{ outH }} px
+            请拖动方框选择区域，实际效果见右侧预览窗口
           </p>
 
-          <!-- 裁剪区：框内即最终保留的区域 -->
-          <div
-            class="crop-stage"
-            :style="{ width: stage.w + 'px', height: stage.h + 'px' }"
-            @pointerdown="onDown"
-            @pointermove="onMove"
-            @pointerup="onUp"
-            @pointercancel="onUp"
-            @wheel="onWheel"
-          >
-            <img
-              v-if="srcUrl"
-              :src="srcUrl"
-              alt="待裁剪"
-              class="crop-img"
-              :class="{ dragging }"
-              :style="{
-                width: displayW + 'px',
-                height: displayH + 'px',
-                transform: `translate(${ox}px, ${oy}px)`
-              }"
-              draggable="false"
-            />
-            <div v-else class="crop-loading">图片加载中…</div>
-            <!-- 三分线，帮助构图 -->
-            <div class="crop-grid">
-              <i></i><i></i><i></i><i></i>
-            </div>
-          </div>
+          <div class="crop-body">
+            <!-- 画布：图片固定不动，上面盖一个可选中的方框 -->
+            <div
+              ref="stageEl"
+              class="crop-stage"
+              :style="{ width: stage.w + 'px', height: stage.h + 'px' }"
+            >
+              <!-- alt 留空：解码失败时浏览器不会画那个「裂开的图片」标记，
+                   真正的失败提示由预加载的 Image() 给出 -->
+              <img
+                v-if="srcUrl"
+                :src="srcUrl"
+                alt=""
+                class="crop-img"
+                :style="imgStyle"
+                draggable="false"
+              />
+              <div v-if="!srcUrl && !error" class="crop-loading">图片加载中…</div>
 
-          <div class="crop-zoom">
-            <span>缩放</span>
-            <input v-model.number="zoom" type="range" min="1" max="4" step="0.01" @input="onZoom" />
-            <span class="crop-zoom-val">{{ zoom.toFixed(2) }}×</span>
+              <!-- 选区：白框 + 蓝色粗角 + 可选白色圆环 -->
+              <div
+                v-if="rawImg"
+                class="crop-sel"
+                :style="selStyle"
+                @pointerdown="beginDrag($event, 'move')"
+              >
+                <div class="crop-sel-circle" v-if="isCircle"></div>
+                <span class="crop-handle nw" @pointerdown.stop="beginDrag($event, 'nw')"></span>
+                <span class="crop-handle ne" @pointerdown.stop="beginDrag($event, 'ne')"></span>
+                <span class="crop-handle sw" @pointerdown.stop="beginDrag($event, 'sw')"></span>
+                <span class="crop-handle se" @pointerdown.stop="beginDrag($event, 'se')"></span>
+              </div>
+            </div>
+
+            <!-- 画布模式预览：跟随选区放大缩小 -->
+            <div class="crop-preview" v-if="rawImg">
+              <span class="pv-label">预览</span>
+              <canvas ref="previewCanvas" class="pv-canvas" :class="{ round: isCircle }"></canvas>
+              <span class="pv-size">{{ Math.round(sel.w) }} × {{ Math.round(sel.h) }} px</span>
+            </div>
           </div>
 
           <p v-if="error" class="crop-err">{{ error }}</p>
@@ -268,109 +396,125 @@ onBeforeUnmount(() => {
   z-index: 300;
   background: rgba(8, 12, 20, 0.66);
   backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   padding: 24px;
 }
 .crop-card {
-  /* 用实底卡片色：--card-bg 可能带透明，压在深色蒙版上会发灰 */
-  background: var(--card, #fff);
-  color: var(--text);
+  /* 宽度跟着画布走：竖图不会在旁边留一大片空白 */
+  width: fit-content;
+  max-width: min(1120px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  background: var(--card);
   border: 1px solid var(--glass-border);
   border-radius: 16px;
-  padding: 20px 22px 18px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
-  max-width: 96vw;
+  box-shadow: var(--shadow-lg, 0 24px 60px rgba(0, 0, 0, 0.28));
+  padding: 18px 22px 20px;
 }
-.crop-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-.crop-head h3 { font-size: 1rem; font-weight: 700; margin: 0; color: var(--text); }
+.crop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.crop-head h3 { font-size: 15px; font-weight: 700; }
 .crop-x {
-  border: 0;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 15px;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
+  border: 0; background: transparent; color: var(--text-dim);
+  font-size: 16px; cursor: pointer; line-height: 1; padding: 4px 6px; border-radius: 6px;
 }
 .crop-x:hover { background: var(--bg-alt); color: var(--text); }
 
-.crop-tip { font-size: 12px; color: var(--text-dim); margin: 0 0 12px; line-height: 1.6; }
-.crop-ratio {
-  display: inline-block;
-  padding: 1px 6px;
-  margin: 0 2px;
-  border-radius: 4px;
-  background: var(--bg-alt);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
+.crop-tip { font-size: 12.5px; color: var(--text-dim); margin-bottom: 12px; }
+.crop-ratio { color: var(--accent); font-weight: 600; }
 
+.crop-body { display: flex; align-items: flex-start; gap: 18px; }
+.crop-preview { min-width: 190px; }
+
+/* 画布 */
 .crop-stage {
   position: relative;
-  overflow: hidden;
+  flex: none;
   border-radius: 10px;
-  background: #111;
-  cursor: grab;
+  overflow: hidden;
+  background: repeating-conic-gradient(#2b323c 0% 25%, #242a33 0% 50%) 50% / 16px 16px;
   touch-action: none;
   user-select: none;
-  max-width: 86vw;
 }
-.crop-stage:active { cursor: grabbing; }
-.crop-img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  max-width: none;
-  pointer-events: none;
-  will-change: transform;
-}
-.crop-img.dragging { transition: none; }
+.crop-img { position: absolute; object-fit: fill; pointer-events: none; }
 .crop-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: #cfd6e4; font-size: 13px;
+}
+
+/* 选区：白色描边 + 深色遮罩 */
+.crop-sel {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  cursor: move;
+  touch-action: none;
+}
+.crop-sel-circle {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
-/* 三分线 */
-.crop-grid { position: absolute; inset: 0; pointer-events: none; }
-.crop-grid i {
+/* 四角：加粗蓝色直角（L 形），拖角改大小 */
+.crop-handle {
   position: absolute;
-  background: rgba(255, 255, 255, 0.28);
+  width: 26px;
+  height: 26px;
+  border: 0 solid var(--accent);
+  border-radius: 1px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  touch-action: none;
 }
-.crop-grid i:nth-child(1) { left: 33.333%; top: 0; bottom: 0; width: 1px; }
-.crop-grid i:nth-child(2) { left: 66.666%; top: 0; bottom: 0; width: 1px; }
-.crop-grid i:nth-child(3) { top: 33.333%; left: 0; right: 0; height: 1px; }
-.crop-grid i:nth-child(4) { top: 66.666%; left: 0; right: 0; height: 1px; }
+.crop-handle.nw {
+  left: -2px; top: -2px;
+  border-top-width: 5px; border-left-width: 5px;
+  border-top-left-radius: 3px;
+  cursor: nwse-resize;
+}
+.crop-handle.ne {
+  right: -2px; top: -2px;
+  border-top-width: 5px; border-right-width: 5px;
+  border-top-right-radius: 3px;
+  cursor: nesw-resize;
+}
+.crop-handle.sw {
+  left: -2px; bottom: -2px;
+  border-bottom-width: 5px; border-left-width: 5px;
+  border-bottom-left-radius: 3px;
+  cursor: nesw-resize;
+}
+.crop-handle.se {
+  right: -2px; bottom: -2px;
+  border-bottom-width: 5px; border-right-width: 5px;
+  border-bottom-right-radius: 3px;
+  cursor: nwse-resize;
+}
 
-.crop-zoom {
+/* 右侧实时预览 */
+.crop-preview {
+  flex: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin: 12px 0 4px;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
 }
-.crop-zoom input[type='range'] { flex: 1; accent-color: var(--accent); }
-.crop-zoom-val { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+.pv-label { font-size: 11.5px; color: var(--text-dim); letter-spacing: 0.4px; }
+.pv-canvas { display: block; border-radius: 8px; background: #11161d; }
+.pv-canvas.round { border-radius: 50%; }
+.pv-size { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
-.crop-err { color: #e5484d; font-size: 12px; margin: 6px 0 0; }
-.crop-note { color: var(--text-dim); font-size: 12px; margin: 6px 0 0; line-height: 1.6; }
+.crop-err { color: #e5484d; font-size: 12.5px; margin: 12px 0 0; }
+.crop-note { color: var(--text-dim); font-size: 12px; margin: 12px 0 0; }
 
-.crop-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
-}
+.crop-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
