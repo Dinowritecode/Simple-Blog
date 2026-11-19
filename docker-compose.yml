@@ -79,6 +79,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 里设置 ADMIN_PASSWORD}
       REDIS_ADDR: redis:6379
       TZ: Asia/Shanghai
+      APP_VERSION: ${IMAGE_TAG:-latest}
     volumes:
       - uploads:/app/uploads
       - posts:/app/data/posts

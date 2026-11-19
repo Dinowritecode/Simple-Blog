@@ -85,6 +85,14 @@ export const api = {
   getOnboarding: () => request('/admin/onboarding'),
   completeOnboarding: (email) => request('/admin/onboarding', { method: 'POST', body: JSON.stringify({ email }) }),
 
+  // 后台「总览」：数字卡片 + 主机性能 + 近 14 天访问量
+  getOverview: () => request('/admin/overview'),
+  // 后台「总览」右侧：网站简略信息 + 备忘录
+  getSiteInfo: () => request('/admin/site-info'),
+  saveMemo: (memo) => request('/admin/memo', { method: 'PUT', body: JSON.stringify({ memo }) }),
+  // 记一次页面访问（前端每次路由切换调一次，失败静默）
+  trackVisit: () => request('/visit', { method: 'POST' }),
+
   // ---------- 用户中心（需登录） ----------
   getMe: () => request('/user/me'),
   // 昵称 / 主页封面：两个字段都可选，只传要改的那个

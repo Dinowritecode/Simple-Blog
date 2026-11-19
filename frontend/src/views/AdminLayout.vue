@@ -16,6 +16,7 @@ import usersRaw from '../others/every-user.svg?raw'
 import pageRaw from '../others/page.svg?raw'
 import configRaw from '../others/config.svg?raw'
 import serverRaw from '../others/server.svg?raw'
+import dashboardRaw from '../others/dashboard-one.svg?raw'
 
 // 图标里除了描边，还有实心小圆点（server.svg 的指示灯）用的是 fill="#333"，
 // 只换 stroke 的话这几个点会一直是黑的 —— 两种都换成 currentColor。
@@ -25,7 +26,7 @@ const toIcon = (raw) =>
     .replace(/fill="#333"/g, 'fill="currentColor"')
 
 const router = useRouter()
-const { displayName, avatarUrl, user, logout } = useAuth()
+const { displayName, avatarUrl, avatarLetter, user, logout } = useAuth()
 const { toast } = useToast()
 
 // 首次进后台：还没做初始化（头像 + 邮箱）就先领到引导页，做完才放行。
@@ -36,6 +37,7 @@ onMounted(async () => {
 })
 
 const navItems = [
+  { to: '/admin/overview', label: '总览', icon: toIcon(dashboardRaw) },
   { to: '/admin', exact: true, label: '文章管理', icon: toIcon(editorRaw) },
   { to: '/admin/comments', label: '评论管理', icon: toIcon(commentsRaw) },
   { to: '/admin/users', label: '用户管理', icon: toIcon(usersRaw) },
@@ -74,6 +76,7 @@ function doLogout() {
       <div class="admin-user">
         <span class="avatar admin-avatar" style="--avatar-size: 40px">
           <img v-if="avatarUrl" :src="avatarUrl" alt="" />
+          <span v-else class="admin-avatar-letter">{{ avatarLetter }}</span>
         </span>
         <div class="admin-user-id label">
           <div class="admin-name">{{ displayName }}<i class="badge-admin">站长</i></div>
@@ -113,7 +116,7 @@ function doLogout() {
   height: 100svh;
   color: #fff;
   overflow: hidden;
-  transition: width 0.2s ease;
+  transition: width 0.26s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: width;
 }
 .admin-side:hover { width: 220px; }
@@ -122,10 +125,14 @@ function doLogout() {
 .admin-side .label {
   opacity: 0;
   white-space: nowrap;
-  transition: opacity 0.14s ease;
+  transition: opacity 0.1s ease;
   pointer-events: none;
 }
-.admin-side:hover .label { opacity: 1; pointer-events: auto; }
+.admin-side:hover .label {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.16s ease 0.09s;   /* 等侧栏宽出来一点再显现，避免文字先挤在窄条里 */
+}
 
 .admin-brand {
   font-weight: 700;
@@ -149,7 +156,8 @@ function doLogout() {
   border-radius: 10px;
   color: rgba(255, 255, 255, 0.82);
   font-size: 14.5px;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease,
+    border-radius 0.26s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* 图标容器：SVG 已经用 currentColor 描边，颜色自动跟随链接状态 */
@@ -174,6 +182,10 @@ function doLogout() {
   font-weight: 600;
 }
 
+/* 缩略态：选中项本身是 44×44 的正方形，圆角拉到 50% 就是正圆；
+   展开时自动回到 10px 的圆角矩形（.admin-nav a 的默认值）。 */
+.admin-side:not(:hover) .admin-nav a.active { border-radius: 50%; }
+
 /* 底部：缩略时只留头像并水平居中，展开时恢复成「头像 + 昵称/邮箱/退出」 */
 .admin-user {
   display: flex;
@@ -187,14 +199,29 @@ function doLogout() {
   color: #fff;
 }
 /* 缩略态：文字块直接从布局里拿掉（只透明的话仍占宽度，头像会被挤到左边） */
-.admin-side:not(:hover) .admin-user { margin: 0; }
-.admin-side:not(:hover) .admin-user-id { display: none; }
+.admin-side:not(:hover) .admin-user { margin: 0; gap: 0; }   /* gap 也要归零：否则 10px 间距会把头像顶偏 */
+.admin-side:not(:hover) .admin-user-id { max-width: 0; opacity: 0; }
 .admin-side:hover .admin-user {
   justify-content: flex-start;
   padding: 16px 10px 0;
 }
 .admin-avatar { border: 2px solid rgba(255, 255, 255, 0.6); flex-shrink: 0; }
-.admin-user-id { min-width: 0; }
+.admin-avatar-letter {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+}
+.admin-user-id {
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  transition: max-width 0.26s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.16s ease;
+}
 .admin-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-email {
   font-size: 11.5px;

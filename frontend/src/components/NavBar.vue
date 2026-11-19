@@ -4,13 +4,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
 import { useSite } from '../composables/useSite'
+import { splitName } from '../utils/splitName'
 import UserMenu from './user/UserMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { theme, toggle } = useTheme()
 const { isLoggedIn } = useAuth()
-const { homeBg } = useSite()
+const { homeBg, ownerNickname } = useSite()
+
+// 品牌名跟随站长昵称：用 | 分隔，前半段走主题色（例如「凛冬|RinEyece」）
+const brandParts = computed(() => splitName(ownerNickname.value || '凛冬RinEyece'))
 const menuOpen = ref(false)
 
 // 站内页面链接（独立路由，不是首页锚点）
@@ -116,10 +120,13 @@ function onScroll() {
 const isPostRoute = computed(() => /^\/blog\/[^/]+$/.test(route.path))
 
 const solid = computed(() => {
-  // 首页：必须「已滚过首屏」且「不在页面顶部」才切实底。
-  // 后半个条件是为了杜绝开页瞬间的白底板：首屏挂载/背景图加载的时机不稳，
-  // glassAtTop 偶发误判成 true 时会闪一条实底白带，加了它就不会。
-  if (route.path === '/') return !!homeBg.value && glassAtTop.value && !navClear.value
+  // 首页：只要不再是「压在背景图上的顶部状态」，就换成实底玻璃。
+  // 原来要求「hero 完全滚出视口」才实底，结果滚大半屏的过程中导航栏一直是透明的，
+  // 看上去像跟着页面一起走，浅色内容滑到下面时白字也看不清。
+  if (route.path === '/') {
+    if (homeBg.value) return !onImage.value
+    return scrollY.value > 8
+  }
   if (isPostRoute.value) return glassAtTop.value
   return false
 })
@@ -131,15 +138,23 @@ const navClear = computed(
 )
 
 function measureGlass() {
+  // 导航栏实际高度（标题栏 64px 上下）：用真实值判断「首屏底边是否已滑过导航栏」
+  const navH = navRef.value ? navRef.value.offsetHeight : 64
+
   // 首页：hero（压在背景图上的首屏）是否已经滚出视口。
   // 这里用 .hero 而不是 .hero.has-bg —— 后者要等背景图 onload 后才出现，
   // 那之前会落到下面「其它页面」分支，被误判成白底导航。
   const heroWithBg = document.querySelector('.hero.has-bg')
   const heroAny = heroWithBg || document.querySelector('.hero')
   if (heroAny) {
-    const atTop = heroAny.getBoundingClientRect().bottom <= 0
+    const heroBottom = heroAny.getBoundingClientRect().bottom
+    const atTop = heroBottom <= 0
     glassAtTop.value = atTop
-    onImage.value = !!heroWithBg && !atTop
+    // 「压在图上」的判定基准是**首屏底边有没有滑过导航栏**：
+    //   · 用 hero 完全滚出视口（bottom <= 0）太晚 —— 滚过大半屏导航栏都还是透明的；
+    //   · 用固定 scrollY 阈值又太早 —— 图还在导航栏下面就先变白了。
+    // 只在「hero 底边仍低于导航栏底边」时保持透明，滑过去立刻切实底。
+    onImage.value = !!heroWithBg && heroBottom > navH + 4
     return
   }
 
@@ -148,7 +163,7 @@ function measureGlass() {
   if (cover) {
     const bottom = cover.getBoundingClientRect().bottom
     glassAtTop.value = bottom <= 0
-    onImage.value = bottom > 60
+    onImage.value = bottom > navH + 4
     return
   }
 
@@ -157,6 +172,11 @@ function measureGlass() {
   onImage.value = false
 }
 
+// 页面初始化 / 从别的页面（搜索页、文章页）返回首页时，Hero 是异步挂载的：
+// NavBar 先挂载时 .hero.has-bg 还不存在 → 会被判成「普通页面」→ 文字变黑，
+// 而之后没有任何事件会再触发重测。这里用 MutationObserver 盯住 DOM 变化
+// （hero 出现、has-bg 被加上、路由视图替换），用 rAF 合并成一次重测。
+let mo = null
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', measureGlass)
@@ -168,11 +188,28 @@ onMounted(() => {
   // 多补测两次（下一帧 + 400ms 后），滚动/缩放仍会兜底。
   requestAnimationFrame(measureGlass)
   setTimeout(measureGlass, 400)
+
+  mo = new MutationObserver(() => {
+    if (moTick) return
+    moTick = requestAnimationFrame(() => {
+      moTick = 0
+      measureGlass()
+    })
+  })
+  mo.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style']
+  })
 })
+let moTick = 0
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScroll)
   window.removeEventListener('resize', measureGlass)
   window.removeEventListener('keydown', onKeydown)
+  if (mo) { mo.disconnect(); mo = null }
+  if (moTick) { cancelAnimationFrame(moTick); moTick = 0 }
 })
 // 路由切换、或背景图异步加载完成（.has-bg 出现）后重新判定一次
 watch(() => route.fullPath, () => {

@@ -26,7 +26,7 @@ trap 'code=$?; [ "$code" = "0" ] || printf "\n✘ 脚本在第 %s 行失败（�
 
 # ---------- 版本 ----------
 # 改脚本时记得更新它：服务器上 `spblog version` 一眼就能看出「下载到的到底是不是新版」
-SPBLOG_VERSION="2026.11.19-0015"
+SPBLOG_VERSION="2026.11.19-1939"
 
 # ---------- 可配置项 ----------
 ROOT="${BLOG_DIR:-/opt/blog}"                 # 站点目录（只放 compose 文件）
@@ -368,6 +368,8 @@ services:
       ADMIN_PASSWORD: \${ADMIN_PASSWORD:?missing}
       REDIS_ADDR: redis:6379
       TZ: Asia/Shanghai
+      # 当前镜像版本：后台「总览」右侧展示用，取的就是部署时的 tag
+      APP_VERSION: \${IMAGE_TAG:-latest}
     volumes:
       - uploads:/app/uploads
       - posts:/app/data/posts

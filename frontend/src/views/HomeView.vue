@@ -3,7 +3,7 @@
 // 个人名片贴在页面最左端、文章区之外：
 //   · 滚到白色区域之前，它随页面一起滚动；
 //   · 白色区域占满页面（hero 完全滚出视口）后改为 fixed，钉住不动，其余内容继续滑。
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import HeroSection from '../components/HeroSection.vue'
 import PageBackdrop from '../components/PageBackdrop.vue'
 import ProfileCard from '../components/ProfileCard.vue'
@@ -19,7 +19,13 @@ import { useSite } from '../composables/useSite'
 
 // 首页背景图（来自 /api/settings，站长在后台「页面管理」配置）。
 // 抽到共享 composable：导航栏也要用它判断文字该用白色还是主题色。
-const { homeBg, heroNickname, heroDesc, heroRoles, heroAvatar } = useSite()
+const { homeBg, heroNickname, heroDesc, heroRoles, heroAvatar, ownerNickname, ownerAvatar } = useSite()
+
+// 首屏的头像与昵称以「站长信息」为准：后台文案里显式填过就用文案，否则跟随站长账号
+// 站长账号优先：在后台「设置」里改昵称 / 换头像，首页首屏立刻同步；
+// 没填站长昵称时才退回「页面管理 → 首页文案」里的那份。
+const heroName = computed(() => ownerNickname.value || heroNickname.value)
+const heroPic = computed(() => ownerAvatar.value || heroAvatar.value)
 
 // ---------- 背景图是否真的加载出来了 ----------
 // 背景图在远端（图床 / CDN / 站长自己填的地址），可能挂了、被墙了、或者只是慢。
@@ -75,10 +81,10 @@ onBeforeUnmount(() => {
     <HeroSection
       :bg="homeBg"
       :bg-ok="bgOk"
-      :nickname="heroNickname"
+      :nickname="heroName"
       :desc="heroDesc"
       :roles="heroRoles"
-      :avatar="heroAvatar"
+      :avatar="heroPic"
     />
 
     <!-- ③ 毛玻璃区域：从下方滑上来盖住背景图。左栏名片、右栏公告+统计，正文居中 -->

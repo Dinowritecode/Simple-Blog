@@ -11,6 +11,7 @@ package main
 // ============================================================
 
 import (
+	"database/sql"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -236,7 +237,24 @@ func handleGetPublicSettings(c *gin.Context) {
 	out["siteFont"] = getSiteFont()
 	// 点击特效（ba-click-fx）的全部参数，前端拿去构造特效实例
 	out["clickFx"] = getClickFX()
+	// 站长信息（头像 / 昵称）：首页首屏与导航栏都以它为准，
+	// 站长在「设置」里改了昵称或头像，首页会自动跟着变。
+	ownerName, ownerAvatar := ownerInfo()
+	out["ownerNickname"] = ownerName
+	out["ownerAvatar"] = ownerAvatar
 	c.JSON(http.StatusOK, out)
+}
+
+// ownerInfo 取站长（role='admin' 的最小 ID）的昵称与头像。
+// 昵称里可以用 | 分隔「主题色部分」和「正文部分」，例如「凛冬|RinEyce」。
+func ownerInfo() (nickname, avatar string) {
+	var name, av sql.NullString
+	if err := q.QueryRow(
+		`SELECT nickname, COALESCE(avatar,'') FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`,
+	).Scan(&name, &av); err != nil {
+		return "", ""
+	}
+	return name.String, av.String
 }
 
 // publicKeyJSON 设置键 → 前端 JSON 字段名（home_bg → homeBg）。

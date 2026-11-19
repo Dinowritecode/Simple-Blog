@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, START_LOCATION } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import { api } from '../api'
 
 const routes = [
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue') },
@@ -33,6 +34,7 @@ const routes = [
     meta: { hideChrome: true, requiresAuth: true, requiresAdmin: true },
     children: [
       { path: '', name: 'admin-dashboard', component: () => import('../views/AdminDashboardView.vue') },
+      { path: 'overview', name: 'admin-overview', component: () => import('../views/AdminOverviewView.vue') },
       { path: 'posts/new', name: 'admin-new', component: () => import('../views/AdminEditorView.vue') },
       { path: 'posts/:id/edit', name: 'admin-edit', component: () => import('../views/AdminEditorView.vue') },
       { path: 'comments', name: 'admin-comments', component: () => import('../views/AdminCommentsView.vue') },
@@ -84,6 +86,16 @@ router.beforeEach((to) => {
   }
   // 访客登录/注册页：已登录 → 回首页（站长也一样）
   if (guestOnly && isLoggedIn.value) return { path: '/' }
+})
+
+// 访问量统计：每次进入「前台页面」记一次（后台 / 登录页不算），
+// 用来给后台「总览」的折线图提供数据。失败静默，绝不影响浏览。
+router.afterEach((to, from) => {
+  if (to.path.startsWith('/admin')) return
+  if (to.matched.some((r) => r.meta.hideChrome)) return
+  // 同一次停留里来回切参数不重复计（比如翻页 / 换 tag）
+  if (from && from.path === to.path) return
+  api.trackVisit().catch(() => {})
 })
 
 export default router

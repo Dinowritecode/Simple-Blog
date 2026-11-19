@@ -281,6 +281,21 @@ func initDB(cfg DBConfig) error {
 			created_at       TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_moment_comments ON moment_comments (moment_id, created_at)`,
+
+		// site_visits：按天累计的访问量（后台「总览」的折线图）。
+		// 只存「每天一行」，一年也就 365 行，不占空间。
+		`CREATE TABLE IF NOT EXISTS site_visits (
+			day      VARCHAR(10) PRIMARY KEY,
+			views    BIGINT NOT NULL DEFAULT 0,
+			visitors BIGINT NOT NULL DEFAULT 0
+		)`,
+
+		// visit_days：谁在哪天来过（用 blog_visitor Cookie 去重算 UV）。
+		`CREATE TABLE IF NOT EXISTS visit_days (
+			day     VARCHAR(10) NOT NULL,
+			visitor VARCHAR(64) NOT NULL,
+			PRIMARY KEY (day, visitor)
+		)`,
 	}
 	for _, stmt := range schema {
 		if _, err := q.Exec(stmt); err != nil {

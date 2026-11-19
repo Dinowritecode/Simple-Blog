@@ -1,8 +1,8 @@
 <script setup>
+import { splitName, firstLetter } from '../utils/splitName'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useTypewriter } from '../composables/useTypewriter'
 // 站点头像统一用 src/others/photo.jpg（首页首屏、左侧名片、浏览器标签页图标同一张）
-import photoUrl from '../others/photo.jpg'
 
 // bg    ：首页背景图 URL（只用于决定「是否压在背景图上」）
 // bgOk  ：这张图**是否真的加载成功**。
@@ -30,12 +30,7 @@ const DEFAULT_DESC = '热爱底层、性能与优雅的代码。用 Rust 写**�
 const DEFAULT_NICKNAME = '凛冬|RinEyce'
 
 // 昵称：后台用 | 分隔「主题色前半段」和「正文后半段」
-const nameParts = computed(() => {
-  const raw = (props.nickname || '').trim() || DEFAULT_NICKNAME
-  const i = raw.indexOf('|')
-  if (i < 0) return { pre: '', main: raw }
-  return { pre: raw.slice(0, i), main: raw.slice(i + 1) }
-})
+const nameParts = computed(() => splitName((props.nickname || '').trim() || DEFAULT_NICKNAME))
 
 // 打字动画的候选词：一行一条；后台没配就用默认
 const roleList = computed(() => {
@@ -62,7 +57,10 @@ const descSegments = computed(() => {
   return out
 })
 
-const avatarUrl = computed(() => props.avatar || photoUrl)
+// 有头像就用图片；没有就用「单字头像」（昵称首字），不再回落到站长的那张照片
+const avatarUrl = computed(() => props.avatar || '')
+// 没上传头像时的单字头像：取名字的第一个字符（英文自动大写）
+const heroLetter = computed(() => firstLetter(nameParts.value.main || nameParts.value.pre))
 
 const { text: typed } = useTypewriter(() => roleList.value)
 
@@ -96,7 +94,8 @@ const isDay = computed(() => {
     <div class="hero-inner" v-reveal>
       <!-- 头像和昵称同一行：头像当「字首」，标题跟它垂直居中 -->
       <div class="hero-title-row">
-        <img class="avatar" :src="avatarUrl" :alt="`${nameParts.main} 的头像`" />
+        <img v-if="avatarUrl" class="avatar" :src="avatarUrl" :alt="`${nameParts.main} 的头像`" />
+        <span v-else class="avatar hero-letter" aria-hidden="true">{{ heroLetter }}</span>
         <h1 class="hero-name">
           <span v-if="nameParts.pre" class="accent">{{ nameParts.pre }}</span>{{ nameParts.main }}
         </h1>
@@ -272,6 +271,15 @@ const isDay = computed(() => {
   margin-bottom: 10px;
 }
 
+.hero-letter {
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+}
 .avatar {
   width: 72px;
   height: 72px;

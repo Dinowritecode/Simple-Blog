@@ -353,7 +353,7 @@ async function savePageSize() {
       <div class="settings-card">
         <h2>✍️ 首页文案</h2>
         <p class="settings-desc">
-          控制首页首屏的<strong>头像、昵称、打字动画和下方介绍</strong>。全部留空则使用内置默认文案。
+          控制首页首屏的<strong>头像、昵称、打字动画和下方介绍</strong>。昵称/头像以「设置 → 站长名称」里的账号信息为准（这里可作备用）；全部留空则使用内置默认文案。
         </p>
 
         <label class="m-field">

@@ -165,6 +165,7 @@ func main() {
 		api.POST("/auth/register", handleRegister)    // 邮箱 + 密码（注册即自动登录）
 		api.GET("/settings", handleGetPublicSettings) // 公开站点设置（首页背景图 + 公告等）
 		api.GET("/stats", handleGetStats)             // 全站统计（已发布文章数 / 分类数 / 标签数）
+		api.POST("/visit", trackVisit)                // 记一次页面访问（后台「总览」折线图的数据来源）
 
 		// 【公开接口】博客浏览：任何人可调用（URL 用随机短码 slug，如 /api/posts/aB3xYz9Q）
 		api.GET("/posts", handleListPosts)                   // 已发布文章分页列表（可按 category / tag / q 过滤）
@@ -259,6 +260,9 @@ func main() {
 			admin.PUT("/settings/content", handleAdminUpdateContent)   // 页面管理：首页文案 + 首屏头像 + 登录页背景
 
 			admin.GET("/onboarding", handleAdminOnboardingState)     // 首次进入后台的初始化引导：查状态
+			admin.GET("/overview", handleAdminOverview)              // 总览：数字卡片 + 主机性能 + 近 14 天访问量
+			admin.GET("/site-info", handleAdminSiteInfo)             // 总览右侧：网站简略信息 + 备忘录
+			admin.PUT("/memo", handleAdminSaveMemo)                  // 总览右侧：保存备忘录
 			admin.POST("/onboarding", handleAdminOnboardingComplete) // 首次进入后台的初始化引导：完成
 
 			admin.GET("/backup/info", handleBackupInfo)      // 备份：当前数据概览（各表行数 / 文件数 / 体积）

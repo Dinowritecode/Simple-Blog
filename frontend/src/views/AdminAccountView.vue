@@ -11,7 +11,7 @@ import { api } from '../api'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
 
-const { user, displayName, avatarUrl, setUser } = useAuth()
+const { user, displayName, avatarUrl, avatarLetter, setUser } = useAuth()
 const { toast } = useToast()
 
 const nickname = ref('')
@@ -90,11 +90,12 @@ async function savePwd() {
     <section class="card">
       <div class="card-head">
         <h2>站长名称</h2>
-        <span class="hint">显示在评论区、资料卡和导航栏</span>
+        <span class="hint">显示在首页首屏、导航栏和评论区；用 <code>|</code> 分隔蓝色/白色两部分，如 <code>凛冬|RinEyce</code></span>
       </div>
       <div class="row">
         <span class="avatar" style="--avatar-size: 44px">
           <img v-if="avatarUrl" :src="avatarUrl" alt="" />
+          <span v-else class="acc-avatar-letter">{{ avatarLetter }}</span>
         </span>
         <input v-model="nickname" class="inp" type="text" maxlength="30" placeholder="站长名称" />
         <button class="btn" :disabled="savingName" @click="saveName">
@@ -188,5 +189,6 @@ async function savePwd() {
 .btn:hover:not(:disabled) { filter: brightness(1.06); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
+.acc-avatar-letter { width: 100%; height: 100%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 18px; }
 .err { color: #e5484d; font-size: 12.5px; margin: 0; }
 </style>

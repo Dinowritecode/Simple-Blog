@@ -82,10 +82,11 @@ export function useAuth() {
     return u.username || '用户'
   })
 
-  // 头像 URL：没设头像时回落到站点默认头像（public/pic/avatar.jpg），
-  // 这样「上传头像」就是可选的 —— 不传也不会出现空白圆圈或首字母占位。
-  const DEFAULT_AVATAR = '/pic/avatar.jpg'
-  const avatarUrl = computed(() => user.value?.avatar || DEFAULT_AVATAR)
+  // 头像 URL：没有头像就返回空串，由各处的「字母 / 单字头像」兜底。
+  // 以前回落到站点默认头像，结果每个没传头像的用户都显示成站长那张图。
+  const avatarUrl = computed(() => user.value?.avatar || '')
+  // 字母头像用的首字：昵称第一个字符（中文取一个字，英文取大写首字母）
+  const avatarLetter = computed(() => (displayName.value || '?').trim().charAt(0) || '?')
 
   return {
     token,
@@ -94,6 +95,7 @@ export function useAuth() {
     isAdmin,
     displayName,
     avatarUrl,
+    avatarLetter,
     login,
     register,
     logout,

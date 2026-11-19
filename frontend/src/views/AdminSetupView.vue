@@ -10,7 +10,7 @@ import { refreshAdminSetup, resetAdminSetupCache } from '../composables/useAdmin
 import ImageCropper from '../components/admin/ImageCropper.vue'
 
 const router = useRouter()
-const { user, displayName, avatarUrl, setUser } = useAuth()
+const { user, displayName, avatarUrl, avatarLetter, setUser } = useAuth()
 const { toast } = useToast()
 
 const email = ref('')
@@ -105,7 +105,8 @@ async function submit() {
         </div>
         <div class="avatar-row">
           <div class="avatar-preview">
-            <img :src="avatarUrl" alt="头像" />
+            <img v-if="avatarUrl" :src="avatarUrl" alt="头像" />
+            <span v-else class="avatar-empty">{{ avatarLetter }}</span>
           </div>
           <div class="avatar-actions">
             <input ref="fileInput" type="file" accept="image/*" hidden @change="onFile" />
@@ -208,6 +209,7 @@ async function submit() {
   border: 2px solid var(--glass-border);
 }
 .avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-empty { font-size: 26px; font-weight: 700; color: var(--accent); }
 .avatar-actions {
   display: flex;
   flex-direction: column;

@@ -49,6 +49,9 @@ const heroDesc = ref('')
 const heroRoles = ref('') // 一行一条，给打字动画用
 const heroAvatar = ref('') // 首屏头像 URL（空 = 内置头像）
 const loginBg = ref('') // 登录页左半屏背景（空 = 主题色底）
+// 站长信息（后端从 role='admin' 的账号取）：首页首屏头像/昵称以它为准
+const ownerNickname = ref('')
+const ownerAvatar = ref('')
 const startedAt = ref(0) // 0 = 尚未取到（或后端版本较旧没返回该字段）
 const notice = ref('')
 const pageSize = ref(DEFAULT_PAGE_SIZE)
@@ -159,6 +162,9 @@ export function pickClickFx(s) {
 // 把一份设置对象灌进各个 ref（接口返回、以及本地缓存复用同一套逻辑）
 function applySettings(s) {
   homeBg.value = s.homeBg || ''
+  // 站长信息：首页首屏与导航栏都用它（后台「设置」里改昵称/头像即可同步）
+  ownerNickname.value = s.ownerNickname || ''
+  ownerAvatar.value = s.ownerAvatar || ''
   postBg.value = s.postBg || ''
   heroNickname.value = s.heroNickname || ''
   heroDesc.value = s.heroDesc || ''
@@ -210,6 +216,8 @@ export function useSite() {
     heroRoles,
     heroAvatar,
     loginBg,
+    ownerNickname,
+    ownerAvatar,
     startedAt,
     notice,
     pageSize,
