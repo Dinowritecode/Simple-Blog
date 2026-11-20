@@ -3,7 +3,7 @@
 // AdminBgCard.vue —— 后台「一张背景图」的通用设置卡片
 //
 // 首页背景图与文章页背景图除了标题、说明和保存接口以外完全一样，
-// 所以抽成一个组件复用：预览 → 填 URL / 上传本地图片 → 清除 → 应用。
+// 所以抽成一个组件复用：填地址 / 上传裁剪 → 清除 → 应用（预览走小窗，不占版面）。
 //
 // 父组件通过 saveFn 把「保存到哪个设置项」传进来（api.saveHomeBg / api.savePostBg），
 // 保存成功后 emit('saved', 新地址)，父组件据此同步更新 useSite 里的值，
@@ -13,7 +13,7 @@
 import { computed, ref, watch } from 'vue'
 import { api } from '../../api'
 import { useToast } from '../../composables/useToast'
-import ImageCropper from './ImageCropper.vue'
+import ImageUrlField from './ImageUrlField.vue'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -29,14 +29,6 @@ const { toast } = useToast()
 
 const input = ref(props.current)
 const saving = ref(false)
-const uploading = ref(false)
-const fileInput = ref(null)
-
-// ---------- 裁剪 ----------
-// 背景图在页面上是「整屏铺满」的（hero 高度 = 100svh - 8px），
-// 所以裁剪框直接用当前窗口的宽高比 —— 后台裁成什么样，前台就是什么样。
-const cropOpen = ref(false)
-const pendingFile = ref(null)
 const bgAspect = computed(() => {
   const w = typeof window !== 'undefined' ? window.innerWidth : 1440
   const h = typeof window !== 'undefined' ? window.innerHeight : 900
@@ -50,35 +42,6 @@ watch(
     input.value = v || ''
   }
 )
-
-function pickFile() {
-  fileInput.value && fileInput.value.click()
-}
-
-function onFile(e) {
-  const f = e.target.files && e.target.files[0]
-  e.target.value = ''
-  if (!f) return
-  if (!/^image\//.test(f.type)) return toast.error('请选择图片文件')
-  // 先裁剪，裁剪确认后才真正上传
-  pendingFile.value = f
-  cropOpen.value = true
-}
-
-async function onCropped(file) {
-  cropOpen.value = false
-  pendingFile.value = null
-  uploading.value = true
-  try {
-    const d = await api.uploadImage(file) // 上传后得到站内 /uploads/xxx 地址
-    input.value = d.url
-    toast.success('已上传，记得点「应用背景」')
-  } catch (err) {
-    toast.error(err.message)
-  } finally {
-    uploading.value = false
-  }
-}
 
 async function save() {
   const v = input.value.trim()
@@ -109,27 +72,19 @@ function clear() {
     <h2>{{ title }}</h2>
     <p class="settings-desc" v-html="desc"></p>
 
-    <!-- 预览 -->
-    <div class="bg-preview" :class="{ 'bg-empty': !input }">
-      <div v-if="input" class="bg-preview-img" :style="{ backgroundImage: `url(${input})` }"></div>
-      <div v-else class="bg-preview-empty">
-        <span class="bg-empty-icon">🖼️</span>
-        <span>{{ emptyText }}</span>
-      </div>
-      <div class="bg-preview-tag">{{ input ? '预览效果' : '预览区' }}</div>
-    </div>
+    <!-- 只显示地址：点 👁 才在小窗里看效果，不再占掉半屏 -->
+    <ImageUrlField
+      v-model="input"
+      :aspect="bgAspect"
+      :out-width="1920"
+      :crop-title="`裁剪${title}`"
+      :crop-note="`裁剪框比例 ${bgAspect.toFixed(2)} : 1 取自你当前窗口的宽高比。`"
+      placeholder="/uploads/xxx.jpg 或 https://…"
+    />
 
     <!-- 输入 / 上传 -->
     <div class="bg-form">
-      <label class="m-field bg-url-field">
-        <span>背景图 URL</span>
-        <input v-model="input" type="text" :placeholder="placeholder" />
-      </label>
       <div class="bg-buttons">
-        <input ref="fileInput" type="file" accept="image/*" hidden @change="onFile" />
-        <button class="btn-sm ghost" :disabled="uploading" @click="pickFile">
-          {{ uploading ? '上传中…' : '📁 上传图片' }}
-        </button>
         <button class="btn-sm ghost" :disabled="!input" @click="clear">清除</button>
         <button class="btn-sm" :disabled="saving || input === current" @click="save">
           {{ saving ? '保存中…' : '💾 应用背景' }}
@@ -140,18 +95,7 @@ function clear() {
       </p>
     </div>
 
-    <!-- 选图后先裁剪：比例取当前窗口，和前台整屏铺满的效果一致 -->
-    <ImageCropper
-      :open="cropOpen"
-      :file="pendingFile"
-      :aspect="bgAspect"
-      :out-width="1920"
-      title="裁剪背景图"
-      :note="`裁剪框比例 ${bgAspect.toFixed(2)} : 1 取自你当前窗口的宽高比 —— 前台背景是整屏铺满的，按这个比例裁，放上去就是现在看到的效果。`"
-      @done="onCropped"
-      @close="cropOpen = false; pendingFile = null"
-    />
-  </div>
+</div>
 </template>
 
 <style scoped>

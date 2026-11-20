@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,8 +25,8 @@ import (
 // settingsPublicKeys 对公众开放的设置键（避免把内部设置泄露出去）。
 var settingsPublicKeys = map[string]bool{
 	"home_bg": true,
-	"post_bg": true,
-	"notice":  true,
+
+	"notice": true,
 	// 首页文案与登录页背景（后台「设置 → 首页文案」里改）
 	"hero_nickname": true,
 	"hero_desc":     true,
@@ -36,11 +37,9 @@ var settingsPublicKeys = map[string]bool{
 
 // ---------- 背景图：首页 / 文章页各一张 ----------
 // 两个键完全独立：后台可以只改其中一个，另一个保持不动。
-// 老库升级上来时 post_bg 还不存在，由 migratePostBg 从 home_bg 复制一份兜底，
 // 保证「升级完文章页背景不会突然消失」；之后想清空文章页背景写空串即可。
 const (
 	settingHomeBg = "home_bg"
-	settingPostBg = "post_bg"
 )
 
 // ---------- 功能开关：Momo Talk ----------
@@ -240,12 +239,13 @@ func handleGetPublicSettings(c *gin.Context) {
 	// 站长信息（头像 / 昵称）：首页首屏与导航栏都以它为准，
 	// 站长在「设置」里改了昵称或头像，首页会自动跟着变。
 	ownerName, ownerAvatar := ownerInfo()
+	out["owner"] = ownerProfile()
 	out["ownerNickname"] = ownerName
 	out["ownerAvatar"] = ownerAvatar
 	c.JSON(http.StatusOK, out)
 }
 
-// ownerInfo 取站长（role='admin' 的最小 ID）的昵称与头像。
+// ownerInfo 取站长（role='admin' 的最小 ID）的昵称、头像与资料字段。
 // 昵称里可以用 | 分隔「主题色部分」和「正文部分」，例如「凛冬|RinEyce」。
 func ownerInfo() (nickname, avatar string) {
 	var name, av sql.NullString
@@ -257,13 +257,46 @@ func ownerInfo() (nickname, avatar string) {
 	return name.String, av.String
 }
 
+// ownerProfile 站长的对外资料（首屏 / 资料卡展示用）：
+// 出生日期、性别、GitHub、联系方式、简介，外加由出生日期算出的星座和年龄。
+func ownerProfile() gin.H {
+	var name, av, gender, github, contact, bio sql.NullString
+	var birthday sql.NullTime
+	err := q.QueryRow(
+		`SELECT nickname, COALESCE(avatar,''), birthday, gender, github, contact, bio
+		 FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`,
+	).Scan(&name, &av, &birthday, &gender, &github, &contact, &bio)
+	if err != nil {
+		return gin.H{}
+	}
+	ep := extraProfile{
+		Gender:  gender.String,
+		GitHub:  github.String,
+		Contact: contact.String,
+		Bio:     bio.String,
+	}
+	if birthday.Valid {
+		ep.Birthday = birthday.Time.Format("2006-01-02")
+	}
+	ep.fillDerived(time.Now())
+	return gin.H{
+		"nickname": name.String,
+		"avatar":   av.String,
+		"birthday": ep.Birthday,
+		"gender":   ep.Gender,
+		"github":   ep.GitHub,
+		"contact":  ep.Contact,
+		"bio":      ep.Bio,
+		"zodiac":   ep.Zodiac,
+		"age":      ep.Age,
+	}
+}
+
 // publicKeyJSON 设置键 → 前端 JSON 字段名（home_bg → homeBg）。
 func publicKeyJSON(key string) string {
 	switch key {
 	case "home_bg":
 		return "homeBg"
-	case "post_bg":
-		return "postBg"
 	case "notice":
 		return "notice"
 	case "hero_nickname":
@@ -285,8 +318,6 @@ func settingKeyFromJSON(name string) string {
 	switch name {
 	case "homeBg":
 		return "home_bg"
-	case "postBg":
-		return "post_bg"
 	}
 	return name
 }
@@ -324,45 +355,6 @@ func handleAdminUpdateHomeBg(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "homeBg": req.HomeBg})
-}
-
-// handleAdminUpdatePostBg 管理员：保存「文章页背景图」。
-// PUT /api/admin/settings/postbg   请求体: {"postBg": "https://…"}（空串 = 清除）
-//
-// 与首页背景图是两个独立的设置：文章详情页用这一张，首页用 home_bg。
-func handleAdminUpdatePostBg(c *gin.Context) {
-	var req struct {
-		PostBg string `json:"postBg"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
-		return
-	}
-	req.PostBg = strings.TrimSpace(req.PostBg)
-	if !safeBgURL(req.PostBg) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "背景图地址不合法：仅支持 http(s):// 或站内 /uploads 路径"})
-		return
-	}
-	if err := setSetting(settingPostBg, req.PostBg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "postBg": req.PostBg})
-}
-
-// migratePostBg 老库升级：「文章页背景图」是后加的设置项。
-// 只在 post_bg 这一行**完全不存在**时，从 home_bg 复制一份 —— 这样升级完
-// 文章页的观感与升级前一致，不会突然变成没有背景。
-// 之后两者彻底独立：后台把文章页背景清空（写一个空串行）不会被这条重新覆盖，
-// 因为 ON CONFLICT DO NOTHING 只在键缺失时插入。
-func migratePostBg() error {
-	_, err := q.Exec(
-		`INSERT INTO settings ("key", value)
-		 SELECT ?, value FROM settings WHERE "key" = ?
-		 ON CONFLICT ("key") DO NOTHING`,
-		settingPostBg, settingHomeBg,
-	)
-	return err
 }
 
 // handleAdminUpdateNotice 管理员：保存首页公告。PUT /api/admin/settings/notice

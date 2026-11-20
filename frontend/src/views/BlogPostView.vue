@@ -39,7 +39,7 @@ function goBack() {
   else router.push('/blog')
 }
 // 文章页背景图：与首页那张分开设置（后台「页面管理 → 文章页背景图」）
-const { postBg, homeBg } = useSite()
+const { homeBg } = useSite()
 
 const post = ref(null)
 const loading = ref(true)
@@ -62,7 +62,7 @@ const tagList = computed(() => {
 // 底部永远垫一层主题色渐变：图没加载出来（图床挂了 / 网络慢）时不会变成一块死黑，
 // 文字仍然读得清 —— 和首页首屏那个「背景图失败」是同一类问题。
 const coverUrl = computed(
-  () => post.value?.cover || postBg.value || homeBg.value || ''
+  () => post.value?.cover || homeBg.value || ''
 )
 const coverStyle = computed(() => {
   const fallback =

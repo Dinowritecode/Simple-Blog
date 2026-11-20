@@ -41,7 +41,6 @@ export const DEFAULT_THEME = {
 }
 
 const homeBg = ref('') // 首页背景图（后台「首页背景图」）
-const postBg = ref('') // 文章详情页背景图（后台「文章页背景图」，与首页各管各的）
 // 首页文案（后台「首页文案」里改）。空串 = 用组件内置的默认值，老库不用迁移。
 // heroNickname 用 | 分隔：前段走主题色，后段走正文色；没有 | 时整串走正文色。
 const heroNickname = ref('')
@@ -52,6 +51,8 @@ const loginBg = ref('') // 登录页左半屏背景（空 = 主题色底）
 // 站长信息（后端从 role='admin' 的账号取）：首页首屏头像/昵称以它为准
 const ownerNickname = ref('')
 const ownerAvatar = ref('')
+// 站长对外资料（出生日期 / 星座 / 年龄 / 性别 / GitHub / 联系方式 / 简介）
+const owner = ref({ birthday: '', zodiac: '', age: 0, gender: '', github: '', contact: '', bio: '' })
 const startedAt = ref(0) // 0 = 尚未取到（或后端版本较旧没返回该字段）
 const notice = ref('')
 const pageSize = ref(DEFAULT_PAGE_SIZE)
@@ -165,7 +166,17 @@ function applySettings(s) {
   // 站长信息：首页首屏与导航栏都用它（后台「设置」里改昵称/头像即可同步）
   ownerNickname.value = s.ownerNickname || ''
   ownerAvatar.value = s.ownerAvatar || ''
-  postBg.value = s.postBg || ''
+  if (s.owner && typeof s.owner === 'object') {
+    owner.value = {
+      birthday: s.owner.birthday || '',
+      zodiac: s.owner.zodiac || '',
+      age: Number(s.owner.age) || 0,
+      gender: s.owner.gender || '',
+      github: s.owner.github || '',
+      contact: s.owner.contact || '',
+      bio: s.owner.bio || ''
+    }
+  }
   heroNickname.value = s.heroNickname || ''
   heroDesc.value = s.heroDesc || ''
   heroRoles.value = s.heroRoles || ''
@@ -210,13 +221,13 @@ export function useSite() {
   }
   return {
     homeBg,
-    postBg,
     heroNickname,
     heroDesc,
     heroRoles,
     heroAvatar,
     loginBg,
     ownerNickname,
+    owner,
     ownerAvatar,
     startedAt,
     notice,

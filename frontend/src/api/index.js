@@ -67,7 +67,6 @@ export const api = {
   getStats: () => request('/stats'), // 全站统计：文章数 / 分类数 / 标签数
   saveHomeBg: (homeBg) => request('/admin/settings/home', { method: 'PUT', body: JSON.stringify({ homeBg }) }),
   // 页面管理：文章详情页背景图（与首页背景图是两个独立设置）
-  savePostBg: (postBg) => request('/admin/settings/postbg', { method: 'PUT', body: JSON.stringify({ postBg }) }),
   saveNotice: (notice) => request('/admin/settings/notice', { method: 'PUT', body: JSON.stringify({ notice }) }),
   // 页面管理：首页文案（昵称 / 介绍 / 打字动画）+ 首屏头像 + 登录页背景
   // 参数是对象，只传要改的字段：{nickname, desc, roles, avatar, loginBg}

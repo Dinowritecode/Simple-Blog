@@ -7,15 +7,29 @@
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 // 站点头像统一用 src/others/photo.jpg
-import photoUrl from '../others/photo.jpg'
+import { splitName } from '../utils/splitName'
 
-// ---------- 固定资料 ----------
-const NICK_CN = '凛冬'
-const NICK_EN = 'RinEyce'
-const BIRTHDAY = { y: 2008, m: 5, d: 22 } // 2008-05-22
-const BIRTHDAY_TEXT = '2008-05-22'
-const ZODIAC = '双子座'
-const GENDER = '男'
+// ---------- 资料：全部来自后台「设置 → 站长资料」，这里只做兜底 ----------
+const props = defineProps({
+  name: { type: String, default: '' },
+  avatar: { type: String, default: '' },
+  birthday: { type: String, default: '' }, // YYYY-MM-DD
+  zodiac: { type: String, default: '' },
+  gender: { type: String, default: '' },
+  bio: { type: String, default: '' },
+  github: { type: String, default: '' },
+  contact: { type: String, default: '' },
+  avatarLetter: { type: String, default: '凛' }
+})
+
+const BIRTHDAY_TEXT = computed(() => props.birthday || '未设置')
+const ZODIAC = computed(() => props.zodiac || '—')
+const GENDER = computed(() => props.gender || '—')
+const NICK_PARTS = computed(() => splitName(props.name || '凛冬|RinEyce'))
+const NICK_CN = computed(() => NICK_PARTS.value.pre)
+const NICK_EN = computed(() => NICK_PARTS.value.main)
+const BIO = computed(() => props.bio || '热爱底层、性能与优雅的代码')
+const AVATAR = computed(() => props.avatar || '')
 
 // 每秒走一次：年龄跨生日能自动更新，运行时长也会逐秒跳动
 const nowTs = ref(Date.now())
@@ -27,11 +41,14 @@ const now = computed(() => new Date(nowTs.value))
 
 // 年龄：按「今年生日是否已过」精确计算，而不是简单年份相减
 const age = computed(() => {
+  if (!props.birthday) return 0
+  const b = new Date(props.birthday + 'T00:00:00')
+  if (Number.isNaN(b.getTime())) return 0
   const t = now.value
-  let a = t.getFullYear() - BIRTHDAY.y
+  let a = t.getFullYear() - b.getFullYear()
   const m = t.getMonth() + 1
-  if (m < BIRTHDAY.m || (m === BIRTHDAY.m && t.getDate() < BIRTHDAY.d)) a--
-  return a
+  if (m < b.getMonth() + 1 || (m === b.getMonth() + 1 && t.getDate() < b.getDate())) a--
+  return a < 0 ? 0 : a
 })
 
 // ---------- 日历已拆成独立卡片：见 CalendarCard.vue ----------
@@ -41,11 +58,12 @@ const age = computed(() => {
   <div class="pc">
     <!-- 头像（静态圆形）+ 昵称 + 一句简介 + 社交账号（原来在首屏 Hero 里，已挪进名片） -->
     <div class="pc-top">
-      <img class="pc-avatar" :src="photoUrl" alt="凛冬RinEyce 的头像" />
+      <img v-if="AVATAR" class="pc-avatar" :src="AVATAR" :alt="(NICK_CN + NICK_EN) + ' 的头像'" />
+      <span v-else class="pc-avatar pc-avatar-letter">{{ avatarLetter }}</span>
       <div class="pc-name">
         <span class="pc-name-cn">{{ NICK_CN }}</span><span class="pc-name-en">{{ NICK_EN }}</span>
       </div>
-      <p class="pc-bio">热爱底层、性能与优雅的代码</p>
+      <p class="pc-bio">{{ BIO }}</p>
 
       <div class="pc-social">
         <a href="https://github.com/Dinowritecode" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
@@ -58,8 +76,9 @@ const age = computed(() => {
     </div>
 
     <ul class="pc-facts">
-      <li><span class="k">星座</span><span class="v">{{ ZODIAC }}</span></li>
-      <li><span class="k">生日</span><span class="v">{{ BIRTHDAY_TEXT }}</span></li>
+      <li><span class="k">出生日期</span><span class="v">{{ BIRTHDAY_TEXT }}</span></li>
+        <li><span class="k">星座</span><span class="v">{{ ZODIAC }}</span></li>
+      
       <li><span class="k">年龄</span><span class="v">{{ age }} 岁</span></li>
       <li><span class="k">性别</span><span class="v">{{ GENDER }}</span></li>
     </ul>

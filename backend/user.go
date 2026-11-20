@@ -41,9 +41,11 @@ func handleMe(c *gin.Context) {
 	c.JSON(http.StatusOK, u)
 }
 
-// handleUpdateProfile 修改昵称 / 主页封面：PUT /api/user/profile
-// 请求体: {"nickname": "...", "cover": "/uploads/xxx.jpg"} —— 两个都是可选的，
-// 只传一个就只改一个；cover 传空串表示恢复默认（用站点首页背景）。
+// handleUpdateProfile 修改个人资料：PUT /api/user/profile
+//
+// 所有字段都是可选的指针，只改传了的那个：
+//   nickname 昵称 / username 登录名 / email 邮箱 / cover 主页封面
+//   birthday 出生日期（星座、年龄由它现算）/ gender 性别 / github / contact / bio 简介
 func handleUpdateProfile(c *gin.Context) {
 	u := authUser(c)
 	if u == nil {
@@ -52,18 +54,26 @@ func handleUpdateProfile(c *gin.Context) {
 	}
 	var req struct {
 		Nickname *string `json:"nickname"`
+		Username *string `json:"username"`
 		Cover    *string `json:"cover"`
 		Email    *string `json:"email"`
+		Birthday *string `json:"birthday"`
+		Gender   *string `json:"gender"`
+		GitHub   *string `json:"github"`
+		Contact  *string `json:"contact"`
+		Bio      *string `json:"bio"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
-	if req.Nickname == nil && req.Cover == nil && req.Email == nil {
+	if req.Nickname == nil && req.Username == nil && req.Cover == nil && req.Email == nil &&
+		req.Birthday == nil && req.Gender == nil && req.GitHub == nil && req.Contact == nil && req.Bio == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "没有要修改的字段"})
 		return
 	}
 
+	// ---------- 昵称（对外显示） ----------
 	if req.Nickname != nil {
 		nick := strings.TrimSpace(*req.Nickname)
 		if nick == "" {
@@ -81,6 +91,32 @@ func handleUpdateProfile(c *gin.Context) {
 		u.Nickname = nick
 	}
 
+	// ---------- 登录名（只用于登录） ----------
+	if req.Username != nil {
+		name := strings.TrimSpace(*req.Username)
+		if len([]rune(name)) < 3 || len([]rune(name)) > 32 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "登录名需 3–32 个字符"})
+			return
+		}
+		for _, r := range name {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "登录名只能包含字母、数字、下划线或短横线"})
+				return
+			}
+		}
+		var taken int
+		if err := q.QueryRow(`SELECT COUNT(*) FROM users WHERE username = ? AND id <> ?`, name, u.ID).Scan(&taken); err == nil && taken > 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "这个登录名已被占用"})
+			return
+		}
+		if _, err := q.Exec(`UPDATE users SET username = ? WHERE id = ?`, name, u.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		u.Username = name
+	}
+
+	// ---------- 主页封面 ----------
 	if req.Cover != nil {
 		cover := strings.TrimSpace(*req.Cover)
 		// 只接受站内上传路径或 http(s) 地址，防止塞进奇怪的协议
@@ -100,6 +136,7 @@ func handleUpdateProfile(c *gin.Context) {
 		u.Cover = cover
 	}
 
+	// ---------- 邮箱 ----------
 	if req.Email != nil {
 		email := strings.TrimSpace(*req.Email)
 		if email == "" {
@@ -122,6 +159,67 @@ func handleUpdateProfile(c *gin.Context) {
 		u.Email = email
 	}
 
+	// ---------- 站长资料：出生日期 / 性别 / GitHub / 联系方式 / 简介 ----------
+	if req.Birthday != nil {
+		birth, err := normalizeBirthday(*req.Birthday)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if _, err := q.Exec(`UPDATE users SET birthday = NULLIF(?, '')::date WHERE id = ?`, birth, u.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		u.Birthday = birth
+	}
+	// 短文本字段：统一走同一条更新路径
+	setShort := func(ptr *string, column string, limit int) bool {
+		if ptr == nil {
+			return true
+		}
+		v := strings.TrimSpace(*ptr)
+		if len([]rune(v)) > limit {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "内容过长"})
+			return false
+		}
+		if _, err := q.Exec(`UPDATE users SET `+column+` = ? WHERE id = ?`, v, u.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return false
+		}
+		return true
+	}
+	if !setShort(req.Gender, "gender", 8) {
+		return
+	}
+	if req.Gender != nil {
+		u.Gender = strings.TrimSpace(*req.Gender)
+	}
+	if !setShort(req.GitHub, "github", 190) {
+		return
+	}
+	if req.GitHub != nil {
+		u.GitHub = strings.TrimSpace(*req.GitHub)
+	}
+	if !setShort(req.Contact, "contact", 190) {
+		return
+	}
+	if req.Contact != nil {
+		u.Contact = strings.TrimSpace(*req.Contact)
+	}
+	if req.Bio != nil {
+		bio := strings.TrimSpace(*req.Bio)
+		if len([]rune(bio)) > 200 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "简介最多 200 字"})
+			return
+		}
+		if _, err := q.Exec(`UPDATE users SET bio = ? WHERE id = ?`, bio, u.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+			return
+		}
+		u.Bio = bio
+	}
+
+	fillUserDerived(u)
 	c.JSON(http.StatusOK, u)
 }
 

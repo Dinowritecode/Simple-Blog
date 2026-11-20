@@ -150,14 +150,17 @@ func userByAccount(account string) (*User, string, error) {
 	var hash string
 	var username, email sql.NullString
 	err := q.QueryRow(
-		`SELECT id, COALESCE(user_id,''), email, username, nickname, avatar, COALESCE(level,1), COALESCE(points,0), role, created_at, password_hash
+		`SELECT id, COALESCE(user_id,''), email, username, nickname, avatar, COALESCE(level,1), COALESCE(points,0), role, created_at,
+		        COALESCE(TO_CHAR(birthday,'YYYY-MM-DD'),''), gender, github, contact, bio, password_hash
 		 FROM users WHERE email = ? OR username = ? LIMIT 1`,
 		strings.ToLower(strings.TrimSpace(account)), strings.TrimSpace(account),
-	).Scan(&u.ID, &u.UserID, &email, &username, &u.Nickname, &u.Avatar, &u.Level, &u.Points, &u.Role, &u.CreatedAt, &hash)
+	).Scan(&u.ID, &u.UserID, &email, &username, &u.Nickname, &u.Avatar, &u.Level, &u.Points, &u.Role, &u.CreatedAt,
+		&u.Birthday, &u.Gender, &u.GitHub, &u.Contact, &u.Bio, &hash)
 	if err != nil {
 		return nil, "", err
 	}
 	u.Email, u.Username = email.String, username.String
+	fillUserDerived(&u)
 	return &u, hash, nil
 }
 
@@ -166,13 +169,16 @@ func userByID(id int64) (*User, error) {
 	var u User
 	var username, email sql.NullString
 	err := q.QueryRow(
-		`SELECT id, COALESCE(user_id,''), email, username, nickname, avatar, COALESCE(cover,''), COALESCE(level,1), COALESCE(points,0), role, created_at
+		`SELECT id, COALESCE(user_id,''), email, username, nickname, avatar, COALESCE(cover,''), COALESCE(level,1), COALESCE(points,0), role, created_at,
+		        COALESCE(TO_CHAR(birthday,'YYYY-MM-DD'),''), gender, github, contact, bio
 		 FROM users WHERE id = ?`, id,
-	).Scan(&u.ID, &u.UserID, &email, &username, &u.Nickname, &u.Avatar, &u.Cover, &u.Level, &u.Points, &u.Role, &u.CreatedAt)
+	).Scan(&u.ID, &u.UserID, &email, &username, &u.Nickname, &u.Avatar, &u.Cover, &u.Level, &u.Points, &u.Role, &u.CreatedAt,
+		&u.Birthday, &u.Gender, &u.GitHub, &u.Contact, &u.Bio)
 	if err != nil {
 		return nil, err
 	}
 	u.Email, u.Username = email.String, username.String
+	fillUserDerived(&u)
 	return &u, nil
 }
 
@@ -234,6 +240,13 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务端错误"})
 		return
 	}
+	// 每日登录 +10 经验（同一天只加一次），顺带把等级写回
+	_, points, _ := awardDailyLogin(u.ID)
+	if points > 0 {
+		u.Points = points
+		u.Level = levelFromPoints(points)
+	}
+	fillUserDerived(u)
 	token, err := signToken(u.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "签发令牌失败"})

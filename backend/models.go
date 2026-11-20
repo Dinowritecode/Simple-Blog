@@ -89,6 +89,8 @@ type User struct {
 	Points    int    `json:"points"`    // 累计积分（目前只能靠每日签到获得）
 	Role      string `json:"role"`      // 角色：admin / user
 	CreatedAt string `json:"createdAt"` // 注册时间
+	// 站长资料（出生日期 / 性别 / GitHub / 联系方式 / 简介）+ 派生的星座、年龄
+	extraProfile
 }
 
 // UserBrief 用户简版信息（评论区 / 通知 / 桃信列表里嵌套展示，免去不必要的字段）。

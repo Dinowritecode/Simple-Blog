@@ -11,19 +11,14 @@ import AdminBgCard from '../components/admin/AdminBgCard.vue'
 
 const { toast } = useToast()
 // 直接改 useSite 里的值：保存后切到前台立刻生效，不用刷新
-const { homeBg, postBg, heroNickname, heroDesc, heroRoles, heroAvatar, loginBg } = useSite()
+const { homeBg, heroNickname, heroDesc, heroRoles, heroAvatar, loginBg } = useSite()
 
 // ---------- 背景图（首页 / 文章页各一张，交给 AdminBgCard 渲染） ----------
 const currentBg = ref('') // 首页已保存的地址
-const currentPostBg = ref('') // 文章页已保存的地址
 
 function onHomeBgSaved(v) {
   currentBg.value = v
   homeBg.value = v
-}
-function onPostBgSaved(v) {
-  currentPostBg.value = v
-  postBg.value = v
 }
 const loading = ref(true)
 
@@ -250,7 +245,6 @@ async function load() {
   try {
     const s = await api.getSettings()
     currentBg.value = s.homeBg || ''
-    currentPostBg.value = s.postBg || ''
     // 首页文案
     heroNicknameInput.value = s.heroNickname || ''
     heroDescInput.value = s.heroDesc || ''
@@ -337,16 +331,6 @@ async function savePageSize() {
         :save-fn="api.saveHomeBg"
         empty-text="未设置背景（首页用默认纯色网格背景）"
         @saved="onHomeBgSaved"
-      />
-
-      <!-- 文章页背景图：与首页完全分开的一张图 -->
-      <AdminBgCard
-        title="📄 文章页背景图"
-        desc="显示在<strong>文章详情页</strong>（点开任意一篇博客进去的那一页）。与上面的首页背景图<strong>互不影响</strong>，可以只改其中一个；留空则该页用默认纯色网格背景。"
-        :current="currentPostBg"
-        :save-fn="api.savePostBg"
-        empty-text="未设置背景（文章页用默认纯色网格背景）"
-        @saved="onPostBgSaved"
       />
 
       <!-- 首页文案：昵称 / 打字动画 / 介绍 / 首屏头像 -->

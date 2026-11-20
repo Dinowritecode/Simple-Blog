@@ -253,7 +253,6 @@ func main() {
 			admin.PUT("/settings/theme", handleAdminUpdateTheme)       // 页面管理：外观定制（主题色/透明度）
 
 			admin.PUT("/settings/home", handleAdminUpdateHomeBg)       // 页面管理：首页背景图
-			admin.PUT("/settings/postbg", handleAdminUpdatePostBg)     // 页面管理：文章页背景图（与首页分开）
 			admin.PUT("/settings/momotalk", handleAdminUpdateMomoTalk) // 功能开关：启用/关闭 Momo Talk
 			admin.PUT("/settings/font", handleAdminUpdateFont)         // 页面管理：全站字体
 			admin.PUT("/settings/clickfx", handleAdminUpdateClickFX)   // 页面管理：点击特效（ba-click-fx）参数

@@ -19,7 +19,7 @@ import { useSite } from '../composables/useSite'
 
 // 首页背景图（来自 /api/settings，站长在后台「页面管理」配置）。
 // 抽到共享 composable：导航栏也要用它判断文字该用白色还是主题色。
-const { homeBg, heroNickname, heroDesc, heroRoles, heroAvatar, ownerNickname, ownerAvatar } = useSite()
+const { homeBg, heroNickname, heroDesc, heroRoles, heroAvatar, ownerNickname, ownerAvatar, owner } = useSite()
 
 // 首屏的头像与昵称以「站长信息」为准：后台文案里显式填过就用文案，否则跟随站长账号
 // 站长账号优先：在后台「设置」里改昵称 / 换头像，首页首屏立刻同步；
@@ -111,7 +111,17 @@ onBeforeUnmount(() => {
       </svg>
 
       <aside class="pc-rail" :class="{ docked }">
-        <ProfileCard />
+        <ProfileCard
+        :name="heroName"
+        :avatar="heroPic"
+        :birthday="owner.birthday"
+        :zodiac="owner.zodiac"
+        :gender="owner.gender"
+        :bio="owner.bio"
+        :github="owner.github"
+        :contact="owner.contact"
+        :avatar-letter="heroName ? heroName.charAt(0) : '凛'"
+      />
       </aside>
 
       <div class="lower">

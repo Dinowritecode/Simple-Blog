@@ -14,8 +14,13 @@ import { useToast } from '../composables/useToast'
 const { user, displayName, avatarUrl, avatarLetter, setUser } = useAuth()
 const { toast } = useToast()
 
-const nickname = ref('')
+const username = ref('')   // 登录名（站长名称）
+const nickname = ref('')   // 对外昵称
 const email = ref('')
+// 站长资料（星座 / 年龄由后端按出生日期算出来）
+const profile = ref({ birthday: '', gender: '', github: '', contact: '', bio: '', zodiac: '', age: 0 })
+const savingProfile = ref(false)
+const savingUser = ref(false)
 const savingName = ref(false)
 const savingEmail = ref(false)
 
@@ -26,9 +31,36 @@ const savingPwd = ref(false)
 const pwdError = ref('')
 
 onMounted(() => {
-  nickname.value = displayName.value || ''
+  username.value = user.value?.username || ''
+  nickname.value = user.value?.nickname || ''
+  const u = user.value || {}
+  profile.value = {
+    birthday: u.birthday || '',
+    gender: u.gender || '',
+    github: u.github || '',
+    contact: u.contact || '',
+    bio: u.bio || '',
+    zodiac: u.zodiac || '',
+    age: u.age || 0
+  }
   email.value = user.value?.email === 'admin@localhost' ? '' : user.value?.email || ''
 })
+
+async function saveUsername() {
+  const v = username.value.trim()
+  if (!/^[A-Za-z0-9_-]{3,32}$/.test(v)) return toast.error('登录名需 3–32 位，只能包含字母、数字、下划线或短横线')
+  if (v === (user.value?.username || '')) return toast.info('登录名没有变化')
+  savingUser.value = true
+  try {
+    const u = await api.updateProfile({ username: v })
+    setUser({ username: u.username })
+    toast.success('登录名已保存，下次用新名字登录')
+  } catch (e) {
+    toast.error(e.message)
+  } finally {
+    savingUser.value = false
+  }
+}
 
 async function saveName() {
   const v = nickname.value.trim()
@@ -43,6 +75,28 @@ async function saveName() {
     toast.error(e.message)
   } finally {
     savingName.value = false
+  }
+}
+
+async function saveProfile() {
+  savingProfile.value = true
+  try {
+    const u = await api.updateProfile({
+      birthday: profile.value.birthday,
+      gender: profile.value.gender,
+      github: profile.value.github,
+      contact: profile.value.contact,
+      bio: profile.value.bio
+    })
+    // 用后端算好的星座 / 年龄回填
+    profile.value.zodiac = u.zodiac || ''
+    profile.value.age = u.age || 0
+    setUser({ birthday: u.birthday, gender: u.gender, github: u.github, contact: u.contact, bio: u.bio, zodiac: u.zodiac, age: u.age })
+    toast.success('资料已保存')
+  } catch (e) {
+    toast.error(e.message)
+  } finally {
+    savingProfile.value = false
   }
 }
 
@@ -87,23 +141,81 @@ async function savePwd() {
     </header>
 
     <!-- 站长名称 -->
+    <!-- 站长名称（登录名）：只用于登录，不对外显示 -->
     <section class="card">
       <div class="card-head">
         <h2>站长名称</h2>
-        <span class="hint">显示在首页首屏、导航栏和评论区；用 <code>|</code> 分隔蓝色/白色两部分，如 <code>凛冬|RinEyce</code></span>
+        <span class="hint">登录用的账号名，不对外显示；3–32 位，只能是字母 / 数字 / 下划线 / 短横线</span>
+      </div>
+      <div class="row">
+        <input v-model="username" class="inp" type="text" maxlength="32" placeholder="admin" />
+        <button class="btn" :disabled="savingUser" @click="saveUsername">
+          {{ savingUser ? '保存中…' : '保存' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- 昵称：对外显示的名字 / 头像 -->
+    <section class="card">
+      <div class="card-head">
+        <h2>昵称</h2>
+        <span class="hint">对外显示在首页首屏、导航栏和评论区；用 <code>|</code> 分隔蓝色/白色两部分，如 <code>凛冬|RinEyce</code></span>
       </div>
       <div class="row">
         <span class="avatar" style="--avatar-size: 44px">
           <img v-if="avatarUrl" :src="avatarUrl" alt="" />
           <span v-else class="acc-avatar-letter">{{ avatarLetter }}</span>
         </span>
-        <input v-model="nickname" class="inp" type="text" maxlength="30" placeholder="站长名称" />
+        <input v-model="nickname" class="inp" type="text" maxlength="30" placeholder="昵称" />
         <button class="btn" :disabled="savingName" @click="saveName">
           {{ savingName ? '保存中…' : '保存' }}
         </button>
       </div>
     </section>
 
+
+    <!-- 站长资料：与首页资料卡同步（星座 / 年龄由出生日期自动算） -->
+    <section class="card">
+      <div class="card-head">
+        <h2>站长资料</h2>
+        <span class="hint">同步到首页资料卡；星座和年龄由出生日期自动得出</span>
+      </div>
+      <div class="grid">
+        <label class="f">
+          <span>出生日期</span>
+          <input v-model="profile.birthday" type="date" />
+        </label>
+        <label class="f">
+          <span>星座（自动）</span>
+          <input :value="profile.zodiac || '—'" type="text" readonly />
+        </label>
+        <label class="f">
+          <span>年龄（自动）</span>
+          <input :value="profile.age ? profile.age + ' 岁' : '—'" type="text" readonly />
+        </label>
+        <label class="f">
+          <span>性别</span>
+          <input v-model="profile.gender" type="text" maxlength="8" placeholder="男 / 女 / 保密" />
+        </label>
+        <label class="f">
+          <span>GitHub 主页</span>
+          <input v-model="profile.github" type="text" placeholder="https://github.com/xxx" />
+        </label>
+        <label class="f">
+          <span>联系方式</span>
+          <input v-model="profile.contact" type="text" placeholder="QQ / 微信 / Telegram…" />
+        </label>
+        <label class="f wide">
+          <span>资料卡简介</span>
+          <input v-model="profile.bio" type="text" maxlength="200" placeholder="一句话介绍自己" />
+        </label>
+      </div>
+      <div class="row end">
+        <button class="btn" :disabled="savingProfile" @click="saveProfile">
+          {{ savingProfile ? '保存中…' : '保存资料' }}
+        </button>
+      </div>
+    </section>
     <!-- 邮箱 -->
     <section class="card">
       <div class="card-head">
@@ -190,5 +302,22 @@ async function savePwd() {
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .acc-avatar-letter { width: 100%; height: 100%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 18px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.f { display: flex; flex-direction: column; gap: 5px; }
+.f.wide { grid-column: 1 / -1; }
+.f > span { font-size: 12.5px; color: var(--text-dim); }
+.f input {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.f input:focus { border-color: var(--accent); }
+.f input[readonly] { color: var(--text-dim); background: var(--bg-alt); }
+.row.end { justify-content: flex-end; margin-top: 12px; }
 .err { color: #e5484d; font-size: 12.5px; margin: 0; }
 </style>

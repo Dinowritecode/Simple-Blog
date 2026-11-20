@@ -22,7 +22,9 @@ const props = defineProps({
   // 输出图片的最大宽度（px），高度按比例算
   outWidth: { type: Number, default: 1920 },
   title: { type: String, default: '裁剪图片' },
-  note: { type: String, default: '' }
+  note: { type: String, default: '' },
+  // compact：小窗模式 —— 弹窗与画布都收窄，用于文章封面 / 背景这类顺手调一下的场景
+  compact: { type: Boolean, default: false }
 })
 const emit = defineEmits(['done', 'close'])
 
@@ -66,8 +68,10 @@ const selStyle = computed(() => ({
 
 // ---------- 舞台尺寸：给「图片 + 右侧预览」留出空间 ----------
 function computeStage() {
-  const maxW = Math.min(window.innerWidth * 0.72, 900)
-  const maxH = window.innerHeight * 0.58
+  const maxW = props.compact
+    ? Math.min(window.innerWidth * 0.56, 620)
+    : Math.min(window.innerWidth * 0.72, 900)
+  const maxH = window.innerHeight * (props.compact ? 0.46 : 0.58)
   let w = maxW
   let h = w / props.aspect
   if (h > maxH) {
@@ -322,7 +326,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <transition name="fade">
       <div v-if="open" class="crop-mask" @click.self="close">
-        <div class="crop-card">
+        <div class="crop-card" :class="{ compact }">
           <div class="crop-head">
             <h3>{{ title }}</h3>
             <button class="crop-x" aria-label="关闭" @click="close">✕</button>
@@ -400,6 +404,7 @@ onBeforeUnmount(() => {
   place-items: center;
   padding: 24px;
 }
+.crop-card.compact { max-width: min(760px, 92vw); padding: 14px 16px 16px; }
 .crop-card {
   /* 宽度跟着画布走：竖图不会在旁边留一大片空白 */
   width: fit-content;

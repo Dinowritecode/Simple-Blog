@@ -2,7 +2,7 @@
 // 右上角用户区：
 //  - 铃铛（回复通知，未读红点，点开面板可跳转对应文章）
 //  - 头像（悬停弹出小菜单：个人资料 / 修改密码 / 退出登录）
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../../api'
 import { useAuth } from '../../composables/useAuth'
@@ -16,6 +16,12 @@ import ProfileModal from './ProfileModal.vue'
 
 const router = useRouter()
 const { user, displayName, avatarUrl, isAdmin, logout } = useAuth()
+// 等级进度：每级 50 经验，满级 10（与后端 level.go 保持一致）
+const levelPercent = computed(() => {
+  const pts = Number(user.value?.points || 0)
+  if ((user.value?.level || 1) >= 10) return 100
+  return Math.min(100, ((pts % 50) / 50) * 100)
+})
 const { ui, openProfileEditor } = useUi()
 const { toast } = useToast()
 // Momo Talk：消息按钮的红点（私信 + 好友申请）与小窗开关
@@ -173,6 +179,11 @@ onBeforeUnmount(() => {
                 Momo Talk ID：{{ user?.userId || '——' }}
                 <em v-if="totalUnread > 0" class="me-uid-dot">{{ totalUnread }}</em>
               </span>
+              <!-- 等级 / 经验：每日登录自动 +10 经验 -->
+              <span class="me-level">
+                <span class="lv">Lv.{{ user?.level || 1 }}</span>
+                <span class="bar" :title="`${user?.points || 0} 经验`"><i :style="{ width: levelPercent + '%' }"></i></span>
+              </span>
             </span>
           </div>
           <div class="menu-list">
@@ -329,6 +340,10 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--border);
 }
 .me-id { display: flex; flex-direction: column; min-width: 0; }
+.me-level { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; color: var(--text-dim); }
+.me-level .lv { color: var(--accent); font-weight: 700; }
+.me-level .bar { flex: 1; max-width: 92px; height: 4px; border-radius: 2px; background: var(--bg-alt); overflow: hidden; }
+.me-level .bar i { display: block; height: 100%; background: var(--accent); transition: width 0.4s ease; }
 .me-name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-email { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 桃信 9 位 ID（别人靠它搜到你） */

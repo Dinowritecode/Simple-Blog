@@ -142,7 +142,14 @@ func initDB(cfg DBConfig) error {
 			avatar        VARCHAR(255) NOT NULL DEFAULT '',             -- 头像 URL（/uploads/avatars/...）
 			role          VARCHAR(16)  NOT NULL DEFAULT 'user',         -- 角色：admin / user
 			user_id       VARCHAR(16)  NOT NULL DEFAULT '',             -- 9 位桃信 ID
-			level         INTEGER      NOT NULL DEFAULT 1,              -- 桃信等级
+			level         INTEGER      NOT NULL DEFAULT 1,              -- 等级（由 points 换算）
+			points        INTEGER      NOT NULL DEFAULT 0,              -- 累计经验
+			-- 站长资料（全部可空，星座/年龄由 birthday 现算，不存）
+			birthday      DATE,
+			gender        VARCHAR(8)   NOT NULL DEFAULT '',
+			github        VARCHAR(190) NOT NULL DEFAULT '',
+			contact       VARCHAR(190) NOT NULL DEFAULT '',
+			bio           TEXT         NOT NULL DEFAULT '',
 			created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			CONSTRAINT uk_users_email    UNIQUE (email),
 			CONSTRAINT uk_users_username UNIQUE (username),
@@ -314,9 +321,9 @@ func initDB(cfg DBConfig) error {
 	if err := migrateMessengerUsers(); err != nil {
 		return fmt.Errorf("迁移用户 Momo Talk 字段失败: %w", err)
 	}
-	// 后台设置：文章页背景图（老库还没有这一项，从首页背景图复制一份兜底）
-	if err := migratePostBg(); err != nil {
-		return fmt.Errorf("迁移文章页背景图设置失败: %w", err)
+	// 站长资料字段（老库补列）
+	if err := migrateProfileFields(); err != nil {
+		return fmt.Errorf("迁移站长资料字段失败: %w", err)
 	}
 	return nil
 }
